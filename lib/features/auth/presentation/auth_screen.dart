@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/account_manager_service.dart';
+import '../../../core/widgets/app_update_card.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -281,6 +282,13 @@ class _AuthScreenState extends State<AuthScreen> {
                     : '¿Ya tienes cuenta? Inicia sesión',
               ),
             ),
+
+            const SizedBox(height: 20),
+            const Divider(),
+            const SizedBox(height: 10),
+
+            // Tarjeta de actualización accesible para usuarios no registrados / cerrados
+            const AppUpdateCard(),
           ],
         ),
       ),
