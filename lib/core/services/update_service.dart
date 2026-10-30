@@ -27,7 +27,8 @@ class UpdateService {
   /// Revisa si existe una versión superior en GitHub Releases
   static Future<AppUpdateInfo> checkForUpdate() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final currentVersion = packageInfo.version;
+    // Limpia el número de compilación (+1, +2) si viene adjunto
+    final currentVersion = packageInfo.version.split('+').first.trim();
 
     try {
       final url = Uri.parse('https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest');
@@ -37,7 +38,14 @@ class UpdateService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final tagName = (data['tag_name'] as String).replaceAll('v', '').trim();
+        
+        // Quita prefijos 'v', 'V' o build metadata
+        final tagName = (data['tag_name'] as String)
+            .replaceAll(RegExp(r'^[vV]'), '')
+            .split('+')
+            .first
+            .trim();
+
         final body = data['body'] as String?;
         final assets = data['assets'] as List?;
 
@@ -76,18 +84,29 @@ class UpdateService {
     return OtaUpdate().execute(apkUrl, destinationFilename: 'kotemal_update.apk');
   }
 
+  /// Compara semanticamente dos versiones (ej: '1.0.1' vs '1.0.0')
   static bool _isVersionHigher(String latest, String current) {
     try {
-      final lParts = latest.split('.').map(int.parse).toList();
-      final cParts = current.split('.').map(int.parse).toList();
+      final cleanLatest = latest.split('+').first.trim();
+      final cleanCurrent = current.split('+').first.trim();
 
-      for (int i = 0; i < lParts.length && i < cParts.length; i++) {
-        if (lParts[i] > cParts[i]) return true;
-        if (lParts[i] < cParts[i]) return false;
+      // Si las cadenas de versión son idénticas, no hay actualización
+      if (cleanLatest == cleanCurrent) return false;
+
+      final lParts = cleanLatest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final cParts = cleanCurrent.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+      final maxLength = lParts.length > cParts.length ? lParts.length : cParts.length;
+
+      for (int i = 0; i < maxLength; i++) {
+        final l = i < lParts.length ? lParts[i] : 0;
+        final c = i < cParts.length ? cParts[i] : 0;
+        if (l > c) return true;
+        if (l < c) return false;
       }
-      return lParts.length > cParts.length;
+      return false;
     } catch (_) {
-      return latest != current;
+      return false;
     }
   }
 }

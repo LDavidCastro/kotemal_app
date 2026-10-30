@@ -28,9 +28,10 @@ class _ProductCustomizationDialogState
     extends State<ProductCustomizationDialog> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
+  String? _errorMessage;
 
-  List<Map<String, dynamic>> _removables = [];
-  List<Map<String, dynamic>> _extras = [];
+  List<dynamic> _removables = [];
+  List<dynamic> _extras = [];
 
   final Set<String> _removedIngredients = {};
   final Set<int> _selectedExtraIds = {};
@@ -44,13 +45,21 @@ class _ProductCustomizationDialogState
 
   Future<void> _loadCustomizations() async {
     try {
+      final session = _supabase.auth.currentSession;
+      debugPrint(
+        'PERSONALIZACIONES -> productId=${widget.product.id} '
+        'session=${session == null ? "ANON" : "AUTH(${session.user.id})"}',
+      );
+
       final res = await _supabase
           .from('product_customizations')
           .select()
           .eq('product_id', widget.product.id)
           .eq('is_available', true);
 
-      final items = List<Map<String, dynamic>>.from(res);
+      debugPrint('PERSONALIZACIONES -> filas=${res.length}');
+
+      final items = List<dynamic>.from(res);
       final removablesList =
           items.where((i) => i['type'] == 'removable').toList();
       final extrasList = items.where((i) => i['type'] == 'extra').toList();
@@ -79,15 +88,33 @@ class _ProductCustomizationDialogState
         }
       }
 
-      setState(() {
-        _removables = removablesList;
-        _extras = extrasList;
-        _isLoading = false;
-      });
-
-      _recalcExtras();
-    } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _removables = removablesList;
+          _extras = extrasList;
+          _isLoading = false;
+        });
+        _recalcExtras();
+      }
+    } on PostgrestException catch (e) {
+      debugPrint(
+        'PERSONALIZACIONES PostgrestException -> code=${e.code} '
+        'message=${e.message} details=${e.details} hint=${e.hint}',
+      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '${e.code}: ${e.message}';
+        });
+      }
+    } catch (e, st) {
+      debugPrint('PERSONALIZACIONES error inesperado: $e\n$st');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString();
+        });
+      }
     }
   }
 
@@ -112,7 +139,6 @@ class _ProductCustomizationDialogState
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 600),
         child: Column(
           children: [
-            // 1. Cabecera con la foto del producto
             Stack(
               children: [
                 SizedBox(
@@ -161,8 +187,6 @@ class _ProductCustomizationDialogState
                 ),
               ],
             ),
-
-            // 2. Título y lista de personalizaciones
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -186,8 +210,6 @@ class _ProductCustomizationDialogState
                             ),
                           ),
                         const Divider(),
-
-                        // Ingredientes que se pueden quitar
                         if (_removables.isNotEmpty) ...[
                           const Text(
                             'Quitar ingredientes:',
@@ -223,8 +245,6 @@ class _ProductCustomizationDialogState
                           }),
                           const Divider(),
                         ],
-
-                        // Extras adicionales
                         if (_extras.isNotEmpty) ...[
                           const Text(
                             'Agregar extras:',
@@ -255,8 +275,18 @@ class _ProductCustomizationDialogState
                             );
                           }),
                         ],
-
-                        if (_removables.isEmpty && _extras.isEmpty)
+                        if (_errorMessage != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Text(
+                                'No se pudieron cargar las personalizaciones:\n$_errorMessage',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          )
+                        else if (_removables.isEmpty && _extras.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 16),
                             child: Center(
@@ -270,8 +300,6 @@ class _ProductCustomizationDialogState
                       ],
                     ),
             ),
-
-            // 3. Barra inferior de confirmación
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -311,7 +339,7 @@ class _ProductCustomizationDialogState
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: () {
-                      List<String> notesParts = [];
+                      final notesParts = <String>[];
                       if (_removedIngredients.isNotEmpty) {
                         notesParts.add('SIN: ${_removedIngredients.join(', ')}');
                       }

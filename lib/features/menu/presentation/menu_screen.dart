@@ -137,17 +137,23 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
             return TabBarView(
               children: [
                 _ProductList(
-                  products: products.where((p) => p.category == 'Comidas').toList(),
+                  products: products
+                      .where((p) => p.category.trim().toLowerCase().contains('comida'))
+                      .toList(),
                   isAdmin: isAdmin,
                   onRefresh: () => ref.refresh(menuListProvider),
                 ),
                 _ProductList(
-                  products: products.where((p) => p.category == 'Bebidas').toList(),
+                  products: products
+                      .where((p) => p.category.trim().toLowerCase().contains('bebida'))
+                      .toList(),
                   isAdmin: isAdmin,
                   onRefresh: () => ref.refresh(menuListProvider),
                 ),
                 _ProductList(
-                  products: products.where((p) => p.category == 'Postres').toList(),
+                  products: products
+                      .where((p) => p.category.trim().toLowerCase().contains('postre'))
+                      .toList(),
                   isAdmin: isAdmin,
                   onRefresh: () => ref.refresh(menuListProvider),
                 ),
@@ -181,7 +187,6 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     backgroundColor: Colors.blue.shade800,
                     foregroundColor: Colors.white,
                     onPressed: () async {
-                      // Abre formulario para crear un nuevo producto
                       final created = await Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -236,7 +241,10 @@ class _ProductList extends ConsumerWidget {
       return;
     }
 
-    if (item.category == 'Comidas' || item.category == 'Postres') {
+    final cat = item.category.trim().toLowerCase();
+    final bool canCustomize = cat.contains('comida') || cat.contains('postre');
+
+    if (canCustomize) {
       final CustomizedProductResult? result = await showDialog<CustomizedProductResult>(
         context: context,
         builder: (_) => ProductCustomizationDialog(product: item),
@@ -260,13 +268,15 @@ class _ProductList extends ConsumerWidget {
       }
     } else {
       ref.read(cartProvider.notifier).addProduct(item);
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Agregado: ${item.name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Agregado: ${item.name}'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
     }
   }
 
@@ -286,7 +296,6 @@ class _ProductList extends ConsumerWidget {
         final item = products[index];
         final isAvailable = item.isAvailable;
 
-        // Total de unidades de este producto ya agregadas al carrito
         final int itemCountInCart = cartItems
             .where((ci) => ci.product.id == item.id)
             .fold(0, (sum, ci) => sum + ci.quantity);
@@ -325,7 +334,6 @@ class _ProductList extends ConsumerWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. Foto grande a la izquierda con insignia de conteo
                     Stack(
                       children: [
                         ClipRRect(
@@ -390,8 +398,6 @@ class _ProductList extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(width: 14),
-
-                    // 2. Información del producto a la derecha
                     Expanded(
                       child: SizedBox(
                         height: 105,
@@ -402,23 +408,17 @@ class _ProductList extends ConsumerWidget {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          decoration: isAvailable
-                                              ? TextDecoration.none
-                                              : TextDecoration.lineThrough,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  item.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: isAvailable
+                                        ? TextDecoration.none
+                                        : TextDecoration.lineThrough,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
