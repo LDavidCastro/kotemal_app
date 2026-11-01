@@ -25,7 +25,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
   LatLng _selectedLocation = const LatLng(14.643973, -91.120232);
   bool _isLoadingGps = false;
   bool _isSendingOrder = false;
-  bool _hasCapturedGps = false; // Control de verificación de GPS
+  bool _hasCapturedGps = false;
 
   @override
   void initState() {
@@ -103,7 +103,6 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
       return;
     }
 
-    // Validación estricta: Si no ha presionado el botón GPS
     if (!_hasCapturedGps) {
       final confirm = await showDialog<bool>(
         context: context,
@@ -176,7 +175,6 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
       ref.read(cartProvider.notifier).clearCart();
 
       if (mounted) {
-        // Redirige al cliente a la pantalla de seguimiento en vivo
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/account_manager_service.dart';
 import '../../../core/widgets/app_update_card.dart';
@@ -193,7 +194,17 @@ class _AuthScreenState extends State<AuthScreen> {
               const Divider(height: 24),
             ],
 
-            const Icon(Icons.stars_rounded, size: 60, color: Colors.deepOrange),
+            Container(
+              height: 120,
+              alignment: Alignment.center,
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain, // Evita que la imagen se estire en web o dispositivos móviles
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(Icons.stars_rounded, size: 60, color: Colors.deepOrange);
+                },
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               _isLogin
@@ -283,12 +294,13 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 10),
-
-            // Tarjeta de actualización accesible para usuarios no registrados / cerrados
-            const AppUpdateCard(),
+            // Mostrar la tarjeta de actualización solo en Android/iOS (Oculta en Web)[cite: 8, 10]
+            if (!kIsWeb) ...[
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 10),
+              const AppUpdateCard(),
+            ],
           ],
         ),
       ),
