@@ -14,6 +14,9 @@ import '../../cart/presentation/cart_screen.dart';
 import '../../delivery/presentation/driver_orders_screen.dart';
 import 'product_customization_dialog.dart';
 
+import '../../../core/services/guest_orders_service.dart';
+import '../../orders/presentation/order_tracking_screen.dart';
+
 class MenuScreen extends ConsumerStatefulWidget {
   const MenuScreen({super.key});
 
@@ -52,6 +55,163 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     }
   }
 
+  /// Despliega el modal de pedidos tanto para invitados como para clientes registrados
+  void _showOrdersModal(BuildContext context) async {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final bool isGuest = currentUser == null;
+
+    List<int> guestOrderIds = [];
+    if (isGuest) {
+      guestOrderIds = await GuestOrdersService.getSavedOrderIds();
+      if (!context.mounted) return;
+
+      if (guestOrderIds.isEmpty) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Sin pedidos recientes'),
+            content: const Text(
+              'Aún no has realizado pedidos desde este dispositivo o tu historial se encuentra vacío.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Entendido'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        // Query dinámica según si está autenticado o es invitado
+        final ordersFuture = isGuest
+            ? Supabase.instance.client
+                .from('orders')
+                .select('id, total, status, delivery_type, created_at')
+                .inFilter('id', guestOrderIds)
+                .order('id', ascending: false)
+            : Supabase.instance.client
+                .from('orders')
+                .select('id, total, status, delivery_type, created_at')
+                .eq('customer_id', currentUser.id)
+                .order('id', ascending: false);
+
+        return Container(
+          height: MediaQuery.of(ctx).size.height * 0.72,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isGuest ? 'Mis Pedidos (Invitado)' : 'Mis Pedidos',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              if (isGuest)
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Pedidos guardados en este dispositivo. Inicia sesión para guardar tu historial en la nube y ganar puntos.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const Divider(),
+              Expanded(
+                child: FutureBuilder(
+                  future: ordersFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final orders = snapshot.data ?? [];
+                    if (orders.isEmpty) {
+                      return const Center(
+                        child: Text('No tienes pedidos registrados aún.'),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: orders.length,
+                      separatorBuilder: (_, __) => const Divider(),
+                      itemBuilder: (context, index) {
+                        final ord = orders[index];
+                        final id = ord['id'] as int;
+                        final total = ord['total'];
+                        final st = ord['status']?.toString().toUpperCase() ?? 'PENDIENTE';
+                        final type = ord['delivery_type'] ?? 'domicilio';
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.deepOrange.shade100,
+                            child: Icon(
+                              type == 'domicilio'
+                                  ? Icons.delivery_dining
+                                  : (type == 'local'
+                                      ? Icons.table_restaurant
+                                      : Icons.takeout_dining),
+                              color: Colors.deepOrange,
+                            ),
+                          ),
+                          title: Text(
+                            'Orden #$id - Q$total',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text('Estado: $st'),
+                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OrderTrackingScreen(orderId: id),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuListProvider);
@@ -59,8 +219,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final currentUser = Supabase.instance.client.auth.currentUser;
 
     final isAdmin = _userRole == 'admin';
-    final isKitchen = _userRole == 'admin' || _userRole == 'cocinero';
-    final isDriver = _userRole == 'admin' || _userRole == 'repartidor';
+    final isKitchen = _userRole == 'cocinero';
+    final isDriver = _userRole == 'repartidor';
+    
+    // Mostramos "Mis Pedidos" si es cliente (invitado o registrado) o admin
+    final showCustomerOrders = !isKitchen && !isDriver;
 
     return DefaultTabController(
       length: 3,
@@ -69,6 +232,14 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           title: const Text("K'OTEMAL - Menú"),
           centerTitle: true,
           actions: [
+            // Botón rápido de Mis Pedidos (Invitados y Registrados)
+            if (showCustomerOrders)
+              IconButton(
+                icon: const Icon(Icons.receipt_long_outlined),
+                tooltip: 'Mis Pedidos',
+                onPressed: () => _showOrdersModal(context),
+              ),
+
             if (isAdmin)
               IconButton(
                 icon: const Icon(Icons.manage_accounts),
@@ -80,28 +251,35 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   );
                 },
               ),
-            if (isKitchen)
+
+            if (isAdmin || isKitchen)
               IconButton(
-                icon: const Icon(Icons.receipt_long_outlined),
+                icon: const Icon(Icons.soup_kitchen_outlined),
                 tooltip: 'Panel de Cocina',
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const OrdersDashboardScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const OrdersDashboardScreen(),
+                    ),
                   );
                 },
               ),
-            if (isDriver)
+
+            if (isAdmin || isDriver)
               IconButton(
                 icon: const Icon(Icons.two_wheeler),
                 tooltip: 'Rutas y Entregas',
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const DriverOrdersScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const DriverOrdersScreen(),
+                    ),
                   );
                 },
               ),
+
             IconButton(
               icon: const Icon(Icons.person_outline),
               tooltip: currentUser != null ? 'Mi Perfil' : 'Iniciar Sesión',
@@ -138,24 +316,27 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
               children: [
                 _ProductList(
                   products: products
-                      .where((p) => p.category.trim().toLowerCase().contains('comida'))
+                      .where((p) =>
+                          p.category.trim().toLowerCase().contains('comida'))
                       .toList(),
                   isAdmin: isAdmin,
-                  onRefresh: () => ref.refresh(menuListProvider),
+                  onRefresh: () => ref.invalidate(menuListProvider),
                 ),
                 _ProductList(
                   products: products
-                      .where((p) => p.category.trim().toLowerCase().contains('bebida'))
+                      .where((p) =>
+                          p.category.trim().toLowerCase().contains('bebida'))
                       .toList(),
                   isAdmin: isAdmin,
-                  onRefresh: () => ref.refresh(menuListProvider),
+                  onRefresh: () => ref.invalidate(menuListProvider),
                 ),
                 _ProductList(
                   products: products
-                      .where((p) => p.category.trim().toLowerCase().contains('postre'))
+                      .where((p) =>
+                          p.category.trim().toLowerCase().contains('postre'))
                       .toList(),
                   isAdmin: isAdmin,
-                  onRefresh: () => ref.refresh(menuListProvider),
+                  onRefresh: () => ref.invalidate(menuListProvider),
                 ),
               ],
             );
@@ -174,7 +355,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const CartScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const CartScreen(),
+                          ),
                         );
                       },
                       icon: const Icon(Icons.shopping_bag_outlined),
@@ -194,7 +377,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                         ),
                       );
                       if (created == true) {
-                        ref.refresh(menuListProvider);
+                        ref.invalidate(menuListProvider);
                       }
                     },
                     icon: const Icon(Icons.add),
@@ -233,10 +416,12 @@ class _ProductList extends ConsumerWidget {
     required this.onRefresh,
   });
 
-  Future<void> _handleProductTap(BuildContext context, WidgetRef ref, Product item) async {
+  Future<void> _handleProductTap(
+      BuildContext context, WidgetRef ref, Product item) async {
     if (!item.isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este producto está agotado temporalmente.')),
+        const SnackBar(
+            content: Text('Este producto está agotado temporalmente.')),
       );
       return;
     }
@@ -245,7 +430,8 @@ class _ProductList extends ConsumerWidget {
     final bool canCustomize = cat.contains('comida') || cat.contains('postre');
 
     if (canCustomize) {
-      final CustomizedProductResult? result = await showDialog<CustomizedProductResult>(
+      final CustomizedProductResult? result =
+          await showDialog<CustomizedProductResult>(
         context: context,
         builder: (_) => ProductCustomizationDialog(product: item),
       );
@@ -311,7 +497,9 @@ class _ProductList extends ConsumerWidget {
               side: BorderSide(
                 color: !isAvailable
                     ? Colors.grey.shade400
-                    : (isSelected ? Colors.deepOrange.shade400 : Colors.grey.shade200),
+                    : (isSelected
+                        ? Colors.deepOrange.shade400
+                        : Colors.grey.shade200),
                 width: isSelected ? 1.5 : 1,
               ),
             ),
@@ -323,7 +511,8 @@ class _ProductList extends ConsumerWidget {
                       final updated = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ProductEditScreen(product: item),
+                          builder: (_) =>
+                              ProductEditScreen(product: item),
                         ),
                       );
                       if (updated == true) onRefresh();
@@ -353,7 +542,8 @@ class _ProductList extends ConsumerWidget {
                             top: 6,
                             left: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
                                 color: Colors.deepOrange,
                                 borderRadius: BorderRadius.circular(10),
@@ -448,14 +638,16 @@ class _ProductList extends ConsumerWidget {
                                   children: [
                                     if (isAdmin)
                                       IconButton(
-                                        icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.blueGrey),
+                                        icon: const Icon(Icons.edit_outlined,
+                                            size: 20, color: Colors.blueGrey),
                                         visualDensity: VisualDensity.compact,
                                         tooltip: 'Editar opciones y foto',
                                         onPressed: () async {
                                           final updated = await Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (_) => ProductEditScreen(product: item),
+                                              builder: (_) =>
+                                                  ProductEditScreen(product: item),
                                             ),
                                           );
                                           if (updated == true) onRefresh();
@@ -472,16 +664,20 @@ class _ProductList extends ConsumerWidget {
                                               : Colors.deepOrange,
                                           elevation: isSelected ? 2 : 0,
                                           shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
                                           ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 6),
                                           visualDensity: VisualDensity.compact,
                                         ),
-                                        onPressed: () => _handleProductTap(context, ref, item),
+                                        onPressed: () =>
+                                            _handleProductTap(context, ref, item),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(isSelected ? Icons.check : Icons.add, size: 16),
+                                            Icon(isSelected ? Icons.check : Icons.add,
+                                                size: 16),
                                             const SizedBox(width: 4),
                                             Text(isSelected ? 'Agregar +' : 'Pedir'),
                                           ],
@@ -489,14 +685,16 @@ class _ProductList extends ConsumerWidget {
                                       )
                                     else
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: Colors.grey.shade300,
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: const Text(
                                           'No disponible',
-                                          style: TextStyle(fontSize: 11, color: Colors.black54),
+                                          style: TextStyle(
+                                              fontSize: 11, color: Colors.black54),
                                         ),
                                       ),
                                   ],
