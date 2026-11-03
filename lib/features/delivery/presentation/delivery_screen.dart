@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/device_id_service.dart';
+import '../../../core/services/guest_orders_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../auth/presentation/auth_screen.dart';
 import '../../cart/presentation/cart_controller.dart';
@@ -148,6 +151,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     try {
       final supabase = Supabase.instance.client;
       final currentUser = supabase.auth.currentUser;
+      final deviceId = await DeviceIdService.getDeviceId();
 
       final orderResponse = await supabase.from('orders').insert({
         'customer_id': currentUser?.id,
@@ -158,6 +162,8 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
         'delivery_longitude': _selectedLocation.longitude,
         'delivery_notes': _notesController.text.trim(),
         'customer_phone': _phoneController.text.trim(),
+        'guest_device_id': currentUser == null ? deviceId : null,
+        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
       }).select('id').single();
 
       final orderId = orderResponse['id'] as int;
@@ -171,6 +177,10 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
       }).toList();
 
       await supabase.from('order_items').insert(itemsToInsert);
+
+      if (currentUser == null) {
+        await GuestOrdersService.saveOrderId(orderId);
+      }
 
       ref.read(cartProvider.notifier).clearCart();
 

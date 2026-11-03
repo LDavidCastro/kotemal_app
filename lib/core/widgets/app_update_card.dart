@@ -44,6 +44,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
           }
         });
       }, onError: (e) {
+        if (!mounted) return;
         setState(() => _downloadProgress = null);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al descargar actualización: $e')),

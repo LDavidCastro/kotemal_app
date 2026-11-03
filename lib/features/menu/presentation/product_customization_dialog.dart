@@ -149,7 +149,7 @@ class _ProductCustomizationDialogState
                       ? Image.network(
                           widget.product.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _dialogPlaceholder(),
+                          errorBuilder: (_, _, _) => _dialogPlaceholder(),
                         )
                       : _dialogPlaceholder(),
                 ),
@@ -306,7 +306,7 @@ class _ProductCustomizationDialogState
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 6,
                     offset: const Offset(0, -2),
                   ),

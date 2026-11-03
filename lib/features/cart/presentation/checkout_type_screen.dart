@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/device_id_service.dart';
+import '../../../core/services/guest_orders_service.dart';
 import '../presentation/cart_controller.dart';
 import '../../delivery/presentation/delivery_screen.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
@@ -75,6 +78,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     try {
       final supabase = Supabase.instance.client;
       final currentUser = supabase.auth.currentUser;
+      final deviceId = await DeviceIdService.getDeviceId();
 
       // Inserción sin necesidad de GPS
       final orderResponse = await supabase.from('orders').insert({
@@ -85,6 +89,8 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
         'table_number': _selectedDeliveryType == 'local' ? _tableController.text.trim() : null,
         'delivery_notes': _notesController.text.trim(),
         'customer_phone': _phoneController.text.trim(),
+        'guest_device_id': currentUser == null ? deviceId : null,
+        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
       }).select('id').single();
 
       final orderId = orderResponse['id'] as int;
@@ -98,6 +104,10 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       }).toList();
 
       await supabase.from('order_items').insert(itemsToInsert);
+
+      if (currentUser == null) {
+        await GuestOrdersService.saveOrderId(orderId);
+      }
 
       ref.read(cartProvider.notifier).clearCart();
 
@@ -281,13 +291,9 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
           ),
         ),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: Radio<String>(
-          value: type,
-          groupValue: _selectedDeliveryType,
-          activeColor: Colors.deepOrange,
-          onChanged: (val) {
-            if (val != null) setState(() => _selectedDeliveryType = val);
-          },
+        trailing: Icon(
+          isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+          color: isSelected ? Colors.deepOrange : Colors.grey,
         ),
       ),
     );

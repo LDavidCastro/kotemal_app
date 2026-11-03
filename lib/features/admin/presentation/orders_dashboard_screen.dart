@@ -147,7 +147,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
 
                   return ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(),
+                    separatorBuilder: (_, _) => const Divider(),
                     itemBuilder: (context, i) {
                       final it = items[i];
                       final qty = it['quantity'] ?? 1;
@@ -301,7 +301,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: _getStatusColor(status).withOpacity(0.15),
+                                color: _getStatusColor(status).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(color: _getStatusColor(status)),
                               ),

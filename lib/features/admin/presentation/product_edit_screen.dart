@@ -309,7 +309,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                   style: const TextStyle(fontSize: 12),
                 ),
                 value: _isAvailable,
-                activeColor: Colors.green,
+                activeThumbColor: Colors.green,
                 onChanged: (val) => setState(() => _isAvailable = val),
               ),
             ),
@@ -334,7 +334,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _category,
+                    initialValue: _category,
                     decoration: const InputDecoration(labelText: 'Categoría', border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'Comidas', child: Text('Comidas')),

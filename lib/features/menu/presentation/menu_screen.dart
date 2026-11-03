@@ -164,7 +164,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     }
                     return ListView.separated(
                       itemCount: orders.length,
-                      separatorBuilder: (_, __) => const Divider(),
+                      separatorBuilder: (_, _) => const Divider(),
                       itemBuilder: (context, index) {
                         final ord = orders[index];
                         final id = ord['id'] as int;
@@ -477,7 +477,7 @@ class _ProductList extends ConsumerWidget {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemCount: products.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final item = products[index];
         final isAvailable = item.isAvailable;
@@ -533,7 +533,7 @@ class _ProductList extends ConsumerWidget {
                                   width: 105,
                                   height: 105,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => _defaultAvatar(item),
+                                  errorBuilder: (_, _, _) => _defaultAvatar(item),
                                 )
                               : _defaultAvatar(item),
                         ),
