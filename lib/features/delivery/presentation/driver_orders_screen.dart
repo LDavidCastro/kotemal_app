@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/location_service.dart';
@@ -14,47 +16,120 @@ class DriverOrdersScreen extends StatefulWidget {
 
 class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   final _supabase = Supabase.instance.client;
-  StreamSubscription<Position>? _positionStream;
-  int? _activeOrderId;
+  // Estáticos: la transmisión sigue viva aunque se cierre/reconstruya esta pantalla.
+  static StreamSubscription<Position>? _positionStream;
+  static int? _activeOrderId;
+  bool _isStarting = false;
 
-  @override
-  void dispose() {
-    _positionStream?.cancel();
-    super.dispose();
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _startSharingLocation(int orderId) {
-    setState(() => _activeOrderId = orderId);
-
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
-    );
-
-    _positionStream?.cancel();
-    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
-        .listen((Position position) async {
-      await _supabase.from('orders').update({
+  Future<void> _pushPosition(int orderId, Position position) async {
+    try {
+      debugPrint('REPARTIDOR GPS -> Lat: ${position.latitude}, Lng: ${position.longitude}');
+      await Supabase.instance.client.from('orders').update({
         'driver_latitude': position.latitude,
         'driver_longitude': position.longitude,
       }).eq('id', orderId);
-    });
+    } catch (e) {
+      debugPrint('Error enviando GPS a Supabase: $e');
+    }
+  }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ubicación en tiempo real activada para el cliente.'),
-          backgroundColor: Colors.green,
-        ),
+  Future<bool> _ensureTrackingPermissions() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      _snack('Activa el GPS del teléfono para compartir tu ubicación.');
+      await Geolocator.openLocationSettings();
+      return false;
+    }
+
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied) {
+      _snack('Se necesita el permiso de ubicación para repartir.');
+      return false;
+    }
+    if (perm == LocationPermission.deniedForever) {
+      _snack('Permiso de ubicación bloqueado. Actívalo en Ajustes de la app.');
+      await Geolocator.openAppSettings();
+      return false;
+    }
+
+    // Android 13+: sin este permiso la notificación del servicio no se muestra.
+    await Permission.notification.request();
+
+    // Evita que el ahorro de batería mate la transmisión con la pantalla apagada.
+    if (!await Permission.ignoreBatteryOptimizations.isGranted) {
+      await Permission.ignoreBatteryOptimizations.request();
+    }
+    return true;
+  }
+
+  Future<void> _startSharingLocation(int orderId) async {
+    if (_isStarting) return;
+    _isStarting = true;
+    try {
+      if (!await _ensureTrackingPermissions()) return;
+
+      late LocationSettings locationSettings;
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        locationSettings = AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+          intervalDuration: const Duration(seconds: 5),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationText: "Transmitiendo ruta de entrega en tiempo real al cliente",
+            notificationTitle: "K'OTEMAL Reparto Activo",
+            enableWakeLock: true,
+            setOngoing: true,
+            notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+          ),
+        );
+      } else {
+        locationSettings = const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        );
+      }
+
+      await _positionStream?.cancel();
+      _activeOrderId = orderId;
+      _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
+          .listen(
+        (position) => _pushPosition(orderId, position),
+        onError: (Object e) => debugPrint('Error en stream GPS: $e'),
       );
+
+      // Envía una posición inmediata para que el cliente vea al repartidor ya.
+      try {
+        final first = await Geolocator.getCurrentPosition();
+        await _pushPosition(orderId, first);
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Compartiendo ubicación (funciona con pantalla apagada) ✓'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } finally {
+      _isStarting = false;
     }
   }
 
   void _stopSharingLocation() {
     _positionStream?.cancel();
-    if (mounted) {
-      setState(() => _activeOrderId = null);
-    }
+    _positionStream = null;
+    _activeOrderId = null;
+    if (mounted) setState(() {});
   }
 
   Future<void> _takeOrder(int orderId) async {
@@ -67,7 +142,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'status': 'en camino',
       }).eq('id', orderId);
 
-      _startSharingLocation(orderId);
+      await _startSharingLocation(orderId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +271,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'status': 'en camino',
       }).eq('id', orderId);
 
-      _startSharingLocation(orderId);
+      await _startSharingLocation(orderId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -250,6 +325,29 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
             }
 
             final allOrders = snapshot.data ?? [];
+
+            // Reanudar / detener la transmisión según el estado real en la BD.
+            if (snapshot.hasData) {
+              Map<String, dynamic>? myOnTheWay;
+              for (final o in allOrders) {
+                if (o['status'] == 'en camino' &&
+                    o['delivery_type'] == 'domicilio' &&
+                    o['delivery_driver_id'] == currentDriverId) {
+                  myOnTheWay = o;
+                  break;
+                }
+              }
+              if (myOnTheWay != null && _positionStream == null && !_isStarting) {
+                final id = myOnTheWay['id'] as int;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _positionStream == null) _startSharingLocation(id);
+                });
+              } else if (myOnTheWay == null && _positionStream != null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _stopSharingLocation();
+                });
+              }
+            }
 
             // Pestaña 1: Por entregar (Filtrado estricto: solo entregas a domicilio)
             final pendingOrders = allOrders.where((o) {

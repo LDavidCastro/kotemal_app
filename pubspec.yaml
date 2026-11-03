@@ -20,6 +20,8 @@ dependencies:
   package_info_plus: ^10.2.2
   ota_update: ^7.1.0
   http: ^1.6.0
+  permission_handler: 12.0.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
