@@ -20,6 +20,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
   double _cashTotal = 0;
   double _transferTotal = 0;
   double _revenueTotal = 0;
+  Map<String, dynamic>? _todayClosure;
 
   @override
   void initState() {
@@ -48,15 +49,25 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     });
 
     try {
-      final data = await _supabase
-          .from('orders')
-          .select('id, total, payment_method, paid_at')
-          .eq('payment_status', 'pagado')
-          .gte('paid_at', _dayStart.toUtc().toIso8601String())
-          .lt('paid_at', _dayEnd.toUtc().toIso8601String())
-          .order('paid_at', ascending: false);
+      final results = await Future.wait([
+        _supabase
+            .from('orders')
+            .select('id, total, payment_method, paid_at')
+            .eq('payment_status', 'pagado')
+            .gte('paid_at', _dayStart.toUtc().toIso8601String())
+            .lt('paid_at', _dayEnd.toUtc().toIso8601String())
+            .order('paid_at', ascending: false),
+        _supabase
+            .from('cash_register_closures')
+            .select()
+            .eq('closure_date', _dateOnly)
+            .order('id', ascending: false)
+            .limit(1)
+            .maybeSingle(),
+      ]);
 
-      final orders = (data as List).cast<Map<String, dynamic>>();
+      final orders = (results[0] as List).cast<Map<String, dynamic>>();
+      final todayClosure = results[1] as Map<String, dynamic>?;
 
       var cash = 0.0;
       var transfer = 0.0;
@@ -76,6 +87,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         _cashTotal = cash;
         _transferTotal = transfer;
         _revenueTotal = cash + transfer;
+        _todayClosure = todayClosure;
         _loading = false;
       });
     } catch (e) {
@@ -92,6 +104,13 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Debes iniciar sesión como administrador.')),
+      );
+      return;
+    }
+
+    if (_todayClosure != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La caja de hoy ya fue cerrada.')),
       );
       return;
     }
@@ -135,17 +154,22 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     setState(() => _closing = true);
 
     try {
-      await _supabase.from('cash_register_closures').insert({
-        'closed_by': user.id,
-        'closure_date': _dateOnly,
-        'total_orders': _paidOrders.length,
-        'total_cash': _cashTotal,
-        'total_transfer': _transferTotal,
-        'total_revenue': _revenueTotal,
-        'notes': 'Cierre generado desde la aplicación.',
-      });
+      final inserted = await _supabase
+          .from('cash_register_closures')
+          .insert({
+            'closed_by': user.id,
+            'closure_date': _dateOnly,
+            'total_orders': _paidOrders.length,
+            'total_cash': _cashTotal,
+            'total_transfer': _transferTotal,
+            'total_revenue': _revenueTotal,
+            'notes': 'Cierre generado desde la aplicación.',
+          })
+          .select()
+          .single();
 
       if (!mounted) return;
+      setState(() => _todayClosure = inserted);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Caja cerrada correctamente.')),
       );
@@ -159,6 +183,14 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     }
   }
 
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const _ClosureHistoryScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,6 +199,11 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         backgroundColor: Colors.deepOrange,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historial de Cierres',
+            onPressed: _openHistory,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
@@ -278,28 +315,31 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+        if (_todayClosure != null)
+          _buildClosedBanner(_todayClosure!)
+        else
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: _closing ? null : _closeCashRegister,
+              icon: _closing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.lock_clock),
+              label: Text(_closing ? 'Cerrando...' : 'Cerrar Caja de Hoy'),
             ),
-            onPressed: _closing ? null : _closeCashRegister,
-            icon: _closing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.lock_clock),
-            label: Text(_closing ? 'Cerrando...' : 'Cerrar Caja de Hoy'),
           ),
-        ),
         const SizedBox(height: 24),
         const Text(
           'Órdenes pagadas hoy',
@@ -319,6 +359,93 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         else
           ..._paidOrders.map(_buildOrderTile),
       ],
+    );
+  }
+
+  Widget _buildClosedBanner(Map<String, dynamic> closure) {
+    final totalOrders = (closure['total_orders'] ?? 0) as num;
+    final totalCash = (closure['total_cash'] ?? 0).toDouble();
+    final totalTransfer = (closure['total_transfer'] ?? 0).toDouble();
+    final totalRevenue = (closure['total_revenue'] ?? 0).toDouble();
+    final closureDate = DateTime.tryParse(
+      closure['closure_date']?.toString() ?? '',
+    );
+
+    return Card(
+      color: Colors.green.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.green.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✓ Caja ya cerrada para este día',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (closureDate != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Fecha de cierre: ${Formatters.dateTime(closureDate).split(' ').first}',
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ],
+            const Divider(height: 20),
+            _buildClosureRow('Total de órdenes', '$totalOrders'),
+            _buildClosureRow('Efectivo', Formatters.currency(totalCash)),
+            _buildClosureRow(
+              'Transferencia',
+              Formatters.currency(totalTransfer),
+            ),
+            _buildClosureRow(
+              'Total ingresado',
+              Formatters.currency(totalRevenue),
+              bold: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClosureRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              color: bold ? Colors.green.shade800 : Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -391,6 +518,194 @@ class _SummaryCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ClosureHistoryScreen extends StatefulWidget {
+  const _ClosureHistoryScreen();
+
+  @override
+  State<_ClosureHistoryScreen> createState() => _ClosureHistoryScreenState();
+}
+
+class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
+  final _supabase = Supabase.instance.client;
+  late Future<List<Map<String, dynamic>>> _closuresFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _closuresFuture = _loadClosures();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadClosures() async {
+    final data = await _supabase
+        .from('cash_register_closures')
+        .select()
+        .order('closure_date', ascending: false)
+        .order('id', ascending: false);
+
+    return (data as List).cast<Map<String, dynamic>>();
+  }
+
+  void _reload() {
+    setState(() {
+      _closuresFuture = _loadClosures();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Historial de Cierres'),
+        backgroundColor: Colors.deepOrange,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
+            onPressed: _reload,
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _closuresFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Error al cargar el historial: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _reload,
+                      child: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final closures = snapshot.data ?? [];
+
+          if (closures.isEmpty) {
+            return const Center(
+              child: Text(
+                'Aún no hay cierres registrados.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: closures.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) =>
+                _buildClosureCard(closures[index]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildClosureCard(Map<String, dynamic> closure) {
+    final totalOrders = (closure['total_orders'] ?? 0) as num;
+    final totalCash = (closure['total_cash'] ?? 0).toDouble();
+    final totalTransfer = (closure['total_transfer'] ?? 0).toDouble();
+    final totalRevenue = (closure['total_revenue'] ?? 0).toDouble();
+    final closureDate = DateTime.tryParse(
+      closure['closure_date']?.toString() ?? '',
+    );
+    final dateLabel = closureDate != null
+        ? Formatters.dateTime(closureDate).split(' ').first
+        : (closure['closure_date']?.toString() ?? 'Sin fecha');
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.event, size: 18, color: Colors.deepOrange),
+                    const SizedBox(width: 6),
+                    Text(
+                      dateLabel,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  '$totalOrders orden(es)',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildHistoryRow('Total de órdenes', '$totalOrders'),
+            _buildHistoryRow('Efectivo', Formatters.currency(totalCash)),
+            _buildHistoryRow(
+              'Transferencia',
+              Formatters.currency(totalTransfer),
+            ),
+            _buildHistoryRow(
+              'Total ingresado',
+              Formatters.currency(totalRevenue),
+              bold: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              color: bold ? Colors.green.shade800 : Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }
