@@ -329,15 +329,19 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text("K'OTEMAL - Panel de Cocina"),
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
           bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(icon: Icon(Icons.local_fire_department), text: 'Activos'),
+              Tab(icon: Icon(Icons.receipt_long), text: 'Pendientes'),
+              Tab(icon: Icon(Icons.soup_kitchen), text: 'En Cocina'),
+              Tab(icon: Icon(Icons.two_wheeler), text: 'En Camino'),
               Tab(icon: Icon(Icons.history), text: 'Historial de Hoy'),
             ],
           ),
@@ -345,11 +349,20 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
         body: TabBarView(
           children: [
             _buildOrdersTab(
-              statuses: const ['pendiente', 'en cocina'],
-              emptyMessage: 'No hay pedidos activos.',
+              statuses: const ['pendiente'],
+              emptyMessage: 'No hay pedidos pendientes.',
             ),
             _buildOrdersTab(
-              statuses: const ['en camino', 'entregado', 'cancelado'],
+              statuses: const ['en cocina'],
+              emptyMessage: 'No hay pedidos en cocina.',
+            ),
+            _buildOrdersTab(
+              statuses: const ['en camino'],
+              todayOnly: true,
+              emptyMessage: 'No hay pedidos en camino hoy.',
+            ),
+            _buildOrdersTab(
+              statuses: const ['entregado', 'cancelado'],
               todayOnly: true,
               emptyMessage: 'No hay pedidos en el historial de hoy.',
             ),
