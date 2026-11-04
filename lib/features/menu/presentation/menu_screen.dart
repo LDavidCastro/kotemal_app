@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/menu_provider.dart';
 import '../domain/product.dart';
+import '../../admin/presentation/cash_closing_screen.dart';
 import '../../admin/presentation/orders_dashboard_screen.dart';
 import '../../admin/presentation/product_edit_screen.dart';
 import '../../admin/presentation/users_roles_screen.dart';
@@ -261,6 +262,20 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const OrdersDashboardScreen(),
+                    ),
+                  );
+                },
+              ),
+
+            if (isAdmin)
+              IconButton(
+                icon: const Icon(Icons.point_of_sale),
+                tooltip: 'Cierre de Caja',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CashClosingScreen(),
                     ),
                   );
                 },

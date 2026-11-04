@@ -12,6 +12,32 @@ class OrdersDashboardScreen extends StatefulWidget {
 
 class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
   final _supabase = Supabase.instance.client;
+  bool _isAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRole();
+  }
+
+  Future<void> _checkRole() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final res = await _supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (mounted && res != null && res['role'] == 'admin') {
+        setState(() => _isAdmin = true);
+      }
+    } catch (_) {
+      // Si falla la consulta se mantiene el modo no-admin.
+    }
+  }
 
   Future<void> _updateStatus(int orderId, String newStatus) async {
     try {
@@ -26,6 +52,82 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
         );
       }
     }
+  }
+
+  Future<void> _markAsPaid(int orderId, String method) async {
+    try {
+      await _supabase.from('orders').update({
+        'status': 'entregado',
+        'payment_status': 'pagado',
+        'payment_method': method,
+        'paid_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', orderId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Orden #$orderId cobrada y entregada '
+              '(${method == 'efectivo' ? 'Efectivo' : 'Transferencia'}).',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al registrar el pago: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showPaymentMethodSheet(int orderId) async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Método de pago - Orden #$orderId',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.payments),
+                ),
+                title: const Text('Efectivo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _markAsPaid(orderId, 'efectivo');
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.account_balance),
+                ),
+                title: const Text('Transferencia'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _markAsPaid(orderId, 'transferencia');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openNavigation(double? lat, double? lng) async {
@@ -217,6 +319,8 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
         return Colors.purple;
       case 'entregado':
         return Colors.green;
+      case 'cancelado':
+        return Colors.red;
       default:
         return Colors.grey;
     }
@@ -224,217 +328,305 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("K'OTEMAL - Panel de Cocina"),
-        backgroundColor: Colors.deepOrange,
-        foregroundColor: Colors.white,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("K'OTEMAL - Panel de Cocina"),
+          backgroundColor: Colors.deepOrange,
+          foregroundColor: Colors.white,
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.local_fire_department), text: 'Activos'),
+              Tab(icon: Icon(Icons.history), text: 'Historial de Hoy'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildOrdersTab(
+              statuses: const ['pendiente', 'en cocina'],
+              emptyMessage: 'No hay pedidos activos.',
+            ),
+            _buildOrdersTab(
+              statuses: const ['en camino', 'entregado', 'cancelado'],
+              todayOnly: true,
+              emptyMessage: 'No hay pedidos en el historial de hoy.',
+            ),
+          ],
+        ),
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _supabase
-            .from('orders')
-            .stream(primaryKey: ['id'])
-            .order('id', ascending: false),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    );
+  }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+  Widget _buildOrdersTab({
+    required List<String> statuses,
+    bool todayOnly = false,
+    required String emptyMessage,
+  }) {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
 
-          final orders = snapshot.data ?? [];
+    var query = _supabase
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .inFilter('status', statuses);
 
-          if (orders.isEmpty) {
-            return const Center(
-              child: Text(
-                'No hay pedidos registrados aún.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            );
-          }
+    if (todayOnly) {
+      query = query
+          .gte('created_at', start.toUtc().toIso8601String())
+          .lt('created_at', end.toUtc().toIso8601String());
+    }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: orders.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              final orderId = order['id'] as int;
-              final status = (order['status'] ?? 'pendiente') as String;
-              final total = (order['total'] ?? 0.0).toString();
-              final phone = order['customer_phone'] ?? 'Sin número';
-              final notes = order['delivery_notes'] ?? 'Sin referencias';
-              final isGuest = order['customer_id'] == null;
-              final lat = order['delivery_latitude'] as double?;
-              final lng = order['delivery_longitude'] as double?;
-              final deliveryType = (order['delivery_type'] ?? 'domicilio') as String;
-              final tableNumber = order['table_number']?.toString() ?? '';
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: query.order('id', ascending: false),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-              return Card(
-                elevation: 3,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => _showOrderDetailsModal(orderId, order), // Tocar la tarjeta abre el detalle de productos
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Orden #$orderId',
-                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.touch_app, size: 16, color: Colors.grey),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(status).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: _getStatusColor(status)),
-                              ),
-                              child: Text(
-                                status.toUpperCase(),
-                                style: TextStyle(
-                                  color: _getStatusColor(status),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                        Row(
-                          children: [
-                            Icon(
-                              deliveryType == 'local'
-                                  ? Icons.table_restaurant
-                                  : deliveryType == 'para_llevar'
-                                      ? Icons.takeout_dining
-                                      : Icons.delivery_dining,
-                              size: 18,
-                              color: Colors.deepOrange,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              deliveryType == 'local'
-                                  ? 'MESA: $tableNumber (Consumo en Local)'
-                                  : deliveryType == 'para_llevar'
-                                      ? 'PARA LLEVAR (Mostrador)'
-                                      : 'A DOMICILIO (Delivery)',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        
-                        // Teléfono clickeable para llamada o WhatsApp
-                        InkWell(
-                          onTap: () => _showContactOptions(phone),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.phone_in_talk, size: 16, color: Colors.blue),
-                              const SizedBox(width: 6),
-                              Text(
-                                phone,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  color: Colors.blue,
-                                  decoration: TextDecoration.underline,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(Icons.chat, size: 16, color: Colors.green),
-                            ],
-                          ),
-                        ),
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
 
-                        if (notes.isNotEmpty && notes != 'Sin referencias') ...[
-                          const SizedBox(height: 6),
-                          Text('Detalles / Referencia: $notes', style: const TextStyle(color: Colors.black87)),
-                        ],
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              isGuest ? Icons.person_outline : Icons.stars,
-                              size: 16,
-                              color: isGuest ? Colors.grey : Colors.amber.shade800,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isGuest ? 'Cliente Invitado' : 'Cliente Registrado (Suma Puntos)',
-                              style: TextStyle(
-                                color: isGuest ? Colors.grey.shade700 : Colors.amber.shade900,
-                                fontSize: 13,
-                                fontWeight: isGuest ? FontWeight.normal : FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Total: Q$total',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            if (deliveryType == 'domicilio' && lat != null && lng != null)
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade700,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: () => _openNavigation(lat, lng),
-                                icon: const Icon(Icons.directions, size: 18),
-                                label: const Text('Ruta Maps'),
-                              ),
-                            const Spacer(),
-                            DropdownButton<String>(
-                              value: status,
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
-                                DropdownMenuItem(value: 'en cocina', child: Text('En cocina')),
-                                DropdownMenuItem(value: 'en camino', child: Text('En camino')),
-                                DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
-                              ],
-                              onChanged: (val) {
-                                if (val != null && val != status) {
-                                  _updateStatus(orderId, val);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
+        final orders = snapshot.data ?? [];
+
+        if (orders.isEmpty) {
+          return Center(
+            child: Text(
+              emptyMessage,
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: orders.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (context, index) => _buildOrderCard(orders[index]),
+        );
+      },
+    );
+  }
+
+  Widget _buildOrderCard(Map<String, dynamic> order) {
+    final orderId = order['id'] as int;
+    final status = (order['status'] ?? 'pendiente') as String;
+    final total = (order['total'] ?? 0.0).toString();
+    final phone = order['customer_phone'] ?? 'Sin número';
+    final notes = order['delivery_notes'] ?? 'Sin referencias';
+    final isGuest = order['customer_id'] == null;
+    final lat = order['delivery_latitude'] as double?;
+    final lng = order['delivery_longitude'] as double?;
+    final deliveryType = (order['delivery_type'] ?? 'domicilio') as String;
+    final tableNumber = order['table_number']?.toString() ?? '';
+    final paymentStatus = (order['payment_status'] ?? 'pendiente') as String;
+    final paymentMethod = order['payment_method'] as String?;
+    final isPaid = paymentStatus == 'pagado';
+    final paymentLabel = paymentMethod == 'efectivo'
+        ? 'Efectivo'
+        : paymentMethod == 'transferencia'
+            ? 'Transferencia'
+            : 'Sin método';
+
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _showOrderDetailsModal(orderId, order), // Tocar la tarjeta abre el detalle de productos
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Orden #$orderId',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.touch_app, size: 16, color: Colors.grey),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _getStatusColor(status)),
+                    ),
+                    child: Text(
+                      status.toUpperCase(),
+                      style: TextStyle(
+                        color: _getStatusColor(status),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
+                ],
+              ),
+              const Divider(),
+              Row(
+                children: [
+                  Icon(
+                    deliveryType == 'local'
+                        ? Icons.table_restaurant
+                        : deliveryType == 'para_llevar'
+                            ? Icons.takeout_dining
+                            : Icons.delivery_dining,
+                    size: 18,
+                    color: Colors.deepOrange,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    deliveryType == 'local'
+                        ? 'MESA: $tableNumber (Consumo en Local)'
+                        : deliveryType == 'para_llevar'
+                            ? 'PARA LLEVAR (Mostrador)'
+                            : 'A DOMICILIO (Delivery)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Teléfono clickeable para llamada o WhatsApp
+              InkWell(
+                onTap: () => _showContactOptions(phone),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.phone_in_talk, size: 16, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Text(
+                      phone,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.blue,
+                        decoration: TextDecoration.underline,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chat, size: 16, color: Colors.green),
+                  ],
                 ),
-              );
-            },
-          );
-        },
+              ),
+
+              if (notes.isNotEmpty && notes != 'Sin referencias') ...[
+                const SizedBox(height: 6),
+                Text('Detalles / Referencia: $notes', style: const TextStyle(color: Colors.black87)),
+              ],
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(
+                    isGuest ? Icons.person_outline : Icons.stars,
+                    size: 16,
+                    color: isGuest ? Colors.grey : Colors.amber.shade800,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isGuest ? 'Cliente Invitado' : 'Cliente Registrado (Suma Puntos)',
+                    style: TextStyle(
+                      color: isGuest ? Colors.grey.shade700 : Colors.amber.shade900,
+                      fontSize: 13,
+                      fontWeight: isGuest ? FontWeight.normal : FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total: Q$total',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    isPaid ? Icons.verified : Icons.payments_outlined,
+                    size: 18,
+                    color: isPaid ? Colors.green : Colors.orange,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      isPaid ? 'Pagado ($paymentLabel)' : 'Pago pendiente',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isPaid ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                  ),
+                  if (_isAdmin && !isPaid)
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                        side: const BorderSide(color: Colors.green),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => _showPaymentMethodSheet(orderId),
+                      icon: const Icon(Icons.price_check, size: 18),
+                      label: const Text('Marcar Pagado'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (deliveryType == 'domicilio' && lat != null && lng != null)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => _openNavigation(lat, lng),
+                      icon: const Icon(Icons.directions, size: 18),
+                      label: const Text('Ruta Maps'),
+                    ),
+                  const Spacer(),
+                  DropdownButton<String>(
+                    value: status,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
+                      DropdownMenuItem(value: 'en cocina', child: Text('En cocina')),
+                      DropdownMenuItem(value: 'en camino', child: Text('En camino')),
+                      DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
+                      DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),
+                    ],
+                    onChanged: (val) {
+                      if (val == null || val == status) return;
+
+                      if (val == 'entregado' && paymentStatus != 'pagado') {
+                        // No se permite entregar sin cobrar: primero se elige el método.
+                        _showPaymentMethodSheet(orderId);
+                      } else {
+                        _updateStatus(orderId, val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
