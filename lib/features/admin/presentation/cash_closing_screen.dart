@@ -20,7 +20,6 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
   double _cashTotal = 0;
   double _transferTotal = 0;
   double _revenueTotal = 0;
-  Map<String, dynamic>? _todayClosure;
 
   @override
   void initState() {
@@ -28,18 +27,11 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     _loadSummary();
   }
 
-  DateTime get _dayStart {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day);
-  }
-
-  DateTime get _dayEnd => _dayStart.add(const Duration(days: 1));
-
   String get _dateOnly {
-    final day = _dayStart;
-    final month = day.month.toString().padLeft(2, '0');
-    final dayOfMonth = day.day.toString().padLeft(2, '0');
-    return '${day.year}-$month-$dayOfMonth';
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final dayOfMonth = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$dayOfMonth';
   }
 
   Future<void> _loadSummary() async {
@@ -49,25 +41,14 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     });
 
     try {
-      final results = await Future.wait([
-        _supabase
-            .from('orders')
-            .select('id, total, payment_method, paid_at')
-            .eq('payment_status', 'pagado')
-            .gte('paid_at', _dayStart.toUtc().toIso8601String())
-            .lt('paid_at', _dayEnd.toUtc().toIso8601String())
-            .order('paid_at', ascending: false),
-        _supabase
-            .from('cash_register_closures')
-            .select()
-            .eq('closure_date', _dateOnly)
-            .order('id', ascending: false)
-            .limit(1)
-            .maybeSingle(),
-      ]);
+      final data = await _supabase
+          .from('orders')
+          .select('id, total, payment_method, paid_at')
+          .eq('payment_status', 'pagado')
+          .isFilter('closure_id', null)
+          .order('paid_at', ascending: false);
 
-      final orders = (results[0] as List).cast<Map<String, dynamic>>();
-      final todayClosure = results[1] as Map<String, dynamic>?;
+      final orders = (data as List).cast<Map<String, dynamic>>();
 
       var cash = 0.0;
       var transfer = 0.0;
@@ -87,7 +68,6 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         _cashTotal = cash;
         _transferTotal = transfer;
         _revenueTotal = cash + transfer;
-        _todayClosure = todayClosure;
         _loading = false;
       });
     } catch (e) {
@@ -108,16 +88,9 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
       return;
     }
 
-    if (_todayClosure != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La caja de hoy ya fue cerrada.')),
-      );
-      return;
-    }
-
     if (_paidOrders.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay pagos registrados hoy para cerrar.')),
+        const SnackBar(content: Text('No hay órdenes abiertas para cerrar.')),
       );
       return;
     }
@@ -125,7 +98,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cerrar Caja de Hoy'),
+        title: const Text('Cerrar Caja'),
         content: Text(
           'Se registrará un cierre con ${_paidOrders.length} orden(es) pagada(s) '
           'por un total de ${Formatters.currency(_revenueTotal)}.\n\n'
@@ -165,30 +138,44 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             'total_revenue': _revenueTotal,
             'notes': 'Cierre generado desde la aplicación.',
           })
-          .select()
+          .select('id')
           .single();
 
+      final newClosureId = inserted['id'];
+      final orderIds = _paidOrders.map((order) => order['id']).toList();
+
+      if (orderIds.isNotEmpty) {
+        await _supabase
+            .from('orders')
+            .update({'closure_id': newClosureId})
+            .inFilter('id', orderIds);
+      }
+
       if (!mounted) return;
-      setState(() => _todayClosure = inserted);
+      setState(() => _closing = false);
+      await _loadSummary();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Caja cerrada correctamente.')),
       );
+      await _openHistory();
     } catch (e) {
       if (!mounted) return;
+      setState(() => _closing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al cerrar la caja: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _closing = false);
     }
   }
 
-  void _openHistory() {
-    Navigator.of(context).push(
+  Future<void> _openHistory() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const _ClosureHistoryScreen(),
       ),
     );
+    if (!mounted) return;
+    await _loadSummary();
   }
 
   @override
@@ -245,7 +232,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Resumen del ${Formatters.dateTime(_dayStart).split(' ').first}',
+          'Caja activa',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
@@ -285,10 +272,10 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Total del día', style: TextStyle(fontSize: 16)),
+                    Text('Total de la caja', style: TextStyle(fontSize: 16)),
                     SizedBox(height: 4),
                     Text(
-                      'Órdenes pagadas',
+                      'Órdenes abiertas',
                       style: TextStyle(fontSize: 12, color: Colors.black54),
                     ),
                   ],
@@ -315,9 +302,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        if (_todayClosure != null)
-          _buildClosedBanner(_todayClosure!)
-        else
+        if (_paidOrders.isNotEmpty)
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -337,12 +322,12 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
                       ),
                     )
                   : const Icon(Icons.lock_clock),
-              label: Text(_closing ? 'Cerrando...' : 'Cerrar Caja de Hoy'),
+              label: Text(_closing ? 'Cerrando...' : 'Cerrar Caja'),
             ),
           ),
         const SizedBox(height: 24),
         const Text(
-          'Órdenes pagadas hoy',
+          'Órdenes en caja activa',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
@@ -351,7 +336,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
-                'Aún no hay órdenes pagadas hoy.',
+                'No hay órdenes pendientes de cierre.',
                 style: TextStyle(color: Colors.grey),
               ),
             ),
@@ -359,93 +344,6 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         else
           ..._paidOrders.map(_buildOrderTile),
       ],
-    );
-  }
-
-  Widget _buildClosedBanner(Map<String, dynamic> closure) {
-    final totalOrders = (closure['total_orders'] ?? 0) as num;
-    final totalCash = (closure['total_cash'] ?? 0).toDouble();
-    final totalTransfer = (closure['total_transfer'] ?? 0).toDouble();
-    final totalRevenue = (closure['total_revenue'] ?? 0).toDouble();
-    final closureDate = DateTime.tryParse(
-      closure['closure_date']?.toString() ?? '',
-    );
-
-    return Card(
-      color: Colors.green.shade50,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.green.shade300),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green.shade700),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '✓ Caja ya cerrada para este día',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (closureDate != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Fecha de cierre: ${Formatters.dateTime(closureDate).split(' ').first}',
-                style: const TextStyle(fontSize: 13, color: Colors.black54),
-              ),
-            ],
-            const Divider(height: 20),
-            _buildClosureRow('Total de órdenes', '$totalOrders'),
-            _buildClosureRow('Efectivo', Formatters.currency(totalCash)),
-            _buildClosureRow(
-              'Transferencia',
-              Formatters.currency(totalTransfer),
-            ),
-            _buildClosureRow(
-              'Total ingresado',
-              Formatters.currency(totalRevenue),
-              bold: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClosureRow(String label, String value, {bool bold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-              color: bold ? Colors.green.shade800 : Colors.black87,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -554,6 +452,57 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
     setState(() {
       _closuresFuture = _loadClosures();
     });
+  }
+
+  Future<void> _reopenClosure(Map<String, dynamic> closure) async {
+    final closureId = closure['id'];
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reabrir cierre'),
+        content: const Text(
+          '¿Reabrir este cierre? Las órdenes volverán a la caja activa '
+          'para que puedas agregar pedidos de última hora.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reabrir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    try {
+      await _supabase
+          .from('cash_register_closures')
+          .delete()
+          .eq('id', closureId);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cierre reabierto. Las órdenes volvieron a la caja activa.'),
+        ),
+      );
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al reabrir el cierre: $e')),
+      );
+    }
   }
 
   @override
@@ -677,6 +626,18 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
               'Total ingresado',
               Formatters.currency(totalRevenue),
               bold: true,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _reopenClosure(closure),
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('Reabrir cierre'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.deepOrange,
+                ),
+              ),
             ),
           ],
         ),
