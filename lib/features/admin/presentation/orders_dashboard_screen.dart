@@ -10,14 +10,38 @@ class OrdersDashboardScreen extends StatefulWidget {
   State<OrdersDashboardScreen> createState() => _OrdersDashboardScreenState();
 }
 
-class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
+class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
+    with SingleTickerProviderStateMixin {
   final _supabase = Supabase.instance.client;
+  late final TabController _tabController;
   bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 5, vsync: this);
     _checkRole();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _navigateToStatusTab(String status) {
+    final index = switch (status) {
+      'pendiente' => 0,
+      'en cocina' => 1,
+      'listo' => 2,
+      'en camino' => 3,
+      'entregado' || 'cancelado' => 4,
+      _ => null,
+    };
+
+    if (index != null && _tabController.index != index) {
+      _tabController.animateTo(index);
+    }
   }
 
   Future<void> _checkRole() async {
@@ -45,6 +69,9 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
           .from('orders')
           .update({'status': newStatus})
           .eq('id', orderId);
+
+      if (!mounted) return;
+      _navigateToStatusTab(newStatus);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -63,16 +90,16 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
         'paid_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', orderId);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Orden #$orderId cobrada y entregada '
-              '(${method == 'efectivo' ? 'Efectivo' : 'Transferencia'}).',
-            ),
+      if (!mounted) return;
+      _navigateToStatusTab('entregado');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Orden #$orderId cobrada y entregada '
+            '(${method == 'efectivo' ? 'Efectivo' : 'Transferencia'}).',
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -330,104 +357,126 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 5,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("K'OTEMAL - Panel de Cocina"),
-          backgroundColor: Colors.deepOrange,
-          foregroundColor: Colors.white,
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(icon: Icon(Icons.receipt_long), text: 'Pendientes'),
-              Tab(icon: Icon(Icons.soup_kitchen), text: 'En Cocina'),
-              Tab(icon: Icon(Icons.check_circle_outline), text: 'Listos'),
-              Tab(icon: Icon(Icons.two_wheeler), text: 'En Camino'),
-              Tab(icon: Icon(Icons.history), text: 'Historial de Hoy'),
-            ],
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _supabase
+          .from('orders')
+          .stream(primaryKey: ['id'])
+          .order('id', ascending: false),
+      builder: (context, snapshot) {
+        final allOrders = snapshot.data ?? [];
+
+        final now = DateTime.now();
+        final start = DateTime(now.year, now.month, now.day);
+        final end = start.add(const Duration(days: 1));
+        bool createdToday(Map<String, dynamic> order) {
+          final raw = order['created_at'];
+          if (raw == null) return false;
+          final createdAt = DateTime.tryParse(raw.toString())?.toLocal();
+          return createdAt != null &&
+              !createdAt.isBefore(start) &&
+              createdAt.isBefore(end);
+        }
+
+        final pendientes =
+            allOrders.where((o) => o['status'] == 'pendiente').toList();
+        final enCocina =
+            allOrders.where((o) => o['status'] == 'en cocina').toList();
+        final listos =
+            allOrders.where((o) => o['status'] == 'listo').toList();
+        final enCamino = allOrders
+            .where((o) => o['status'] == 'en camino' && createdToday(o))
+            .toList();
+        final historialHoy = allOrders
+            .where((o) =>
+                (o['status'] == 'entregado' || o['status'] == 'cancelado') &&
+                createdToday(o))
+            .toList();
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("K'OTEMAL - Panel de Cocina"),
+            backgroundColor: Colors.deepOrange,
+            foregroundColor: Colors.white,
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.receipt_long),
+                  text: 'Pendientes (${pendientes.length})',
+                ),
+                Tab(
+                  icon: const Icon(Icons.soup_kitchen),
+                  text: 'En Cocina (${enCocina.length})',
+                ),
+                Tab(
+                  icon: const Icon(Icons.check_circle_outline),
+                  text: 'Listos (${listos.length})',
+                ),
+                Tab(
+                  icon: const Icon(Icons.two_wheeler),
+                  text: 'En Camino (${enCamino.length})',
+                ),
+                Tab(
+                  icon: const Icon(Icons.history),
+                  text: 'Historial (${historialHoy.length})',
+                ),
+              ],
+            ),
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildOrdersTab(
-              statuses: const ['pendiente'],
-              emptyMessage: 'No hay pedidos pendientes.',
-            ),
-            _buildOrdersTab(
-              statuses: const ['en cocina'],
-              emptyMessage: 'No hay pedidos en cocina.',
-            ),
-            _buildOrdersTab(
-              statuses: const ['listo'],
-              emptyMessage: 'No hay pedidos listos para entregar.',
-            ),
-            _buildOrdersTab(
-              statuses: const ['en camino'],
-              todayOnly: true,
-              emptyMessage: 'No hay pedidos en camino hoy.',
-            ),
-            _buildOrdersTab(
-              statuses: const ['entregado', 'cancelado'],
-              todayOnly: true,
-              emptyMessage: 'No hay pedidos en el historial de hoy.',
-            ),
-          ],
-        ),
-      ),
+          body: snapshot.connectionState == ConnectionState.waiting
+              ? const Center(child: CircularProgressIndicator())
+              : snapshot.hasError
+                  ? Center(child: Text('Error: ${snapshot.error}'))
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildOrdersList(
+                          pendientes,
+                          'No hay pedidos pendientes.',
+                        ),
+                        _buildOrdersList(
+                          enCocina,
+                          'No hay pedidos en cocina.',
+                        ),
+                        _buildOrdersList(
+                          listos,
+                          'No hay pedidos listos para entregar.',
+                        ),
+                        _buildOrdersList(
+                          enCamino,
+                          'No hay pedidos en camino hoy.',
+                        ),
+                        _buildOrdersList(
+                          historialHoy,
+                          'No hay pedidos en el historial de hoy.',
+                        ),
+                      ],
+                    ),
+        );
+      },
     );
   }
 
-  Widget _buildOrdersTab({
-    required List<String> statuses,
-    bool todayOnly = false,
-    required String emptyMessage,
-  }) {
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final end = start.add(const Duration(days: 1));
-
-    var query = _supabase
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .inFilter('status', statuses);
-
-    if (todayOnly) {
-      query = query
-          .gte('created_at', start.toUtc().toIso8601String())
-          .lt('created_at', end.toUtc().toIso8601String());
+  Widget _buildOrdersList(
+    List<Map<String, dynamic>> orders,
+    String emptyMessage,
+  ) {
+    if (orders.isEmpty) {
+      return Center(
+        child: Text(
+          emptyMessage,
+          style: const TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
     }
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: query.order('id', ascending: false),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final orders = snapshot.data ?? [];
-
-        if (orders.isEmpty) {
-          return Center(
-            child: Text(
-              emptyMessage,
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: orders.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (context, index) => _buildOrderCard(orders[index]),
-        );
-      },
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: orders.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => _buildOrderCard(orders[index]),
     );
   }
 
