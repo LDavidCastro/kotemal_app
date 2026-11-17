@@ -24,7 +24,7 @@
   - `orders(id, customer_id, total, status, delivery_type, table_number, delivery_latitude, delivery_longitude, driver_latitude, driver_longitude, delivery_notes, customer_phone, delivery_driver_id, guest_device_id, platform)`
   - `order_items(order_id, product_id, quantity, unit_price, notes)`
   - Storage bucket `menu-images`, read via public URLs.
-- Conventional values: `profiles.role` = `cliente|cocinero|repartidor|admin`; order `status` = `pendiente|en cocina|en camino|entregado`; `delivery_type` = `local|para_llevar|domicilio` (Guatemala/Sololá context).
+- Conventional values: `profiles.role` = `cliente|cocinero|repartidor|admin`; order `status` = `pendiente|en cocina|listo|en camino|entregado|cancelado`; `delivery_type` = `local|para_llevar|domicilio` (Guatemala/Sololá context).
 - Guest checkout inserts `customer_id: null`; RLS must allow anonymous order inserts and public menu/customization reads. Realtime uses `.stream(primaryKey: ['id'])` on `orders`/`profiles`.
 
 ## Testing

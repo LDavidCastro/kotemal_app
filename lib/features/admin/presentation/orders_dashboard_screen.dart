@@ -315,6 +315,8 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
         return Colors.orange;
       case 'en cocina':
         return Colors.blue;
+      case 'listo':
+        return Colors.teal;
       case 'en camino':
         return Colors.purple;
       case 'entregado':
@@ -329,7 +331,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text("K'OTEMAL - Panel de Cocina"),
@@ -341,6 +343,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
             tabs: [
               Tab(icon: Icon(Icons.receipt_long), text: 'Pendientes'),
               Tab(icon: Icon(Icons.soup_kitchen), text: 'En Cocina'),
+              Tab(icon: Icon(Icons.check_circle_outline), text: 'Listos'),
               Tab(icon: Icon(Icons.two_wheeler), text: 'En Camino'),
               Tab(icon: Icon(Icons.history), text: 'Historial de Hoy'),
             ],
@@ -355,6 +358,10 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
             _buildOrdersTab(
               statuses: const ['en cocina'],
               emptyMessage: 'No hay pedidos en cocina.',
+            ),
+            _buildOrdersTab(
+              statuses: const ['listo'],
+              emptyMessage: 'No hay pedidos listos para entregar.',
             ),
             _buildOrdersTab(
               statuses: const ['en camino'],
@@ -620,6 +627,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
                     items: const [
                       DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
                       DropdownMenuItem(value: 'en cocina', child: Text('En cocina')),
+                      DropdownMenuItem(value: 'listo', child: Text('Listo')),
                       DropdownMenuItem(value: 'en camino', child: Text('En camino')),
                       DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
                       DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),

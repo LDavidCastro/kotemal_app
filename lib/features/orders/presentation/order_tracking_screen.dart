@@ -22,10 +22,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         return 0;
       case 'en cocina':
         return 1;
-      case 'en camino':
+      case 'listo':
         return 2;
-      case 'entregado':
+      case 'en camino':
         return 3;
+      case 'entregado':
+        return 4;
       default:
         return 0;
     }
@@ -37,6 +39,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         return 0;
       case 'en cocina':
         return 1;
+      case 'listo':
+        return 2;
       case 'entregado':
         return 2;
       default:
@@ -72,7 +76,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           // VISTA 1: Pedidos en Local o Para Llevar (Sin Mapa)
           if (!isDelivery) {
             final onSiteStep = _getOnSiteStatusStep(status);
-            final isReady = status == 'entregado';
+            final isReady = status == 'listo' || status == 'entregado';
 
             return Padding(
               padding: const EdgeInsets.all(24.0),
@@ -215,9 +219,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         _StatusLine(active: currentStep >= 1),
                         _StatusIcon(icon: Icons.soup_kitchen, label: 'En cocina', active: currentStep >= 1),
                         _StatusLine(active: currentStep >= 2),
-                        _StatusIcon(icon: Icons.two_wheeler, label: 'En camino', active: currentStep >= 2),
+                        _StatusIcon(icon: Icons.inventory_2, label: 'Listo', active: currentStep >= 2),
                         _StatusLine(active: currentStep >= 3),
-                        _StatusIcon(icon: Icons.home, label: 'Entregado', active: currentStep >= 3),
+                        _StatusIcon(icon: Icons.two_wheeler, label: 'En camino', active: currentStep >= 3),
+                        _StatusLine(active: currentStep >= 4),
+                        _StatusIcon(icon: Icons.home, label: 'Entregado', active: currentStep >= 4),
                       ],
                     ),
                     const SizedBox(height: 12),

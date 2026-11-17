@@ -427,7 +427,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               final type = o['delivery_type'] ?? 'domicilio';
               final assignedId = o['delivery_driver_id'];
               return type == 'domicilio' &&
-                  (st == 'en cocina' || st == 'en camino' || st == 'pendiente') &&
+                  (st == 'en cocina' ||
+                      st == 'listo' ||
+                      st == 'en camino' ||
+                      st == 'pendiente') &&
                   (assignedId == null || assignedId == currentDriverId);
             }).toList();
 
@@ -504,12 +507,16 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     Chip(
                       label: Text(
-                        status.toUpperCase(),
+                        status == 'listo'
+                            ? 'LISTO PARA RECOGER'
+                            : status.toUpperCase(),
                         style: const TextStyle(fontSize: 11, color: Colors.white),
                       ),
-                      backgroundColor: isDeliveredView
-                          ? Colors.green
-                          : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
+                      backgroundColor: status == 'listo'
+                          ? Colors.teal
+                          : isDeliveredView
+                              ? Colors.green
+                              : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
                     ),
                   ],
                 ),
