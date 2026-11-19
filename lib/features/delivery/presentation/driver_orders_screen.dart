@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,7 +20,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   final _supabase = Supabase.instance.client;
   // Estáticos: la transmisión sigue viva aunque se cierre/reconstruya esta pantalla.
   static StreamSubscription<Position>? _positionStream;
-  static int? _activeOrderId;
+  static Set<int> _activeOrderIds = <int>{};
   bool _isStarting = false;
 
   void _snack(String msg) {
@@ -26,13 +28,19 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _pushPosition(int orderId, Position position) async {
+  Future<void> _pushPosition(Position position) async {
+    final activeIds = _activeOrderIds.toList();
+    if (activeIds.isEmpty) return;
+
     try {
-      debugPrint('REPARTIDOR GPS -> Lat: ${position.latitude}, Lng: ${position.longitude}');
+      debugPrint(
+        'REPARTIDOR GPS -> Lat: ${position.latitude}, '
+        'Lng: ${position.longitude}, pedidos: $activeIds',
+      );
       await Supabase.instance.client.from('orders').update({
         'driver_latitude': position.latitude,
         'driver_longitude': position.longitude,
-      }).eq('id', orderId);
+      }).inFilter('id', activeIds);
     } catch (e) {
       debugPrint('Error enviando GPS a Supabase: $e');
     }
@@ -69,7 +77,25 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     return true;
   }
 
-  Future<void> _startSharingLocation(int orderId) async {
+  Future<void> _startSharingLocation(Set<int> orderIds) async {
+    if (orderIds.isEmpty) {
+      _stopSharingLocation();
+      return;
+    }
+
+    _activeOrderIds = {...orderIds};
+
+    // El stream ya está activo: solo actualizamos los pedidos destino y
+    // enviamos una posición inmediata para que todos reciban el GPS ya.
+    if (_positionStream != null) {
+      try {
+        final current = await Geolocator.getCurrentPosition();
+        await _pushPosition(current);
+      } catch (_) {}
+      if (mounted) setState(() {});
+      return;
+    }
+
     if (_isStarting) return;
     _isStarting = true;
     try {
@@ -97,18 +123,16 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         );
       }
 
-      await _positionStream?.cancel();
-      _activeOrderId = orderId;
       _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
           .listen(
-        (position) => _pushPosition(orderId, position),
+        (position) => _pushPosition(position),
         onError: (Object e) => debugPrint('Error en stream GPS: $e'),
       );
 
-      // Envía una posición inmediata para que el cliente vea al repartidor ya.
+      // Envía una posición inmediata para que los clientes vean al repartidor ya.
       try {
         final first = await Geolocator.getCurrentPosition();
-        await _pushPosition(orderId, first);
+        await _pushPosition(first);
       } catch (_) {}
 
       if (mounted) {
@@ -128,8 +152,17 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   void _stopSharingLocation() {
     _positionStream?.cancel();
     _positionStream = null;
-    _activeOrderId = null;
+    _activeOrderIds.clear();
     if (mounted) setState(() {});
+  }
+
+  void _removeActiveOrder(int orderId) {
+    _activeOrderIds.remove(orderId);
+    if (_activeOrderIds.isEmpty) {
+      _stopSharingLocation();
+    } else if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _takeOrder(int orderId) async {
@@ -142,7 +175,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'status': 'en camino',
       }).eq('id', orderId);
 
-      await _startSharingLocation(orderId);
+      await _startSharingLocation({..._activeOrderIds, orderId});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,7 +215,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'status': 'en cocina',
       }).eq('id', orderId);
 
-      _stopSharingLocation();
+      _removeActiveOrder(orderId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -242,7 +275,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
           'status': 'entregado',
         }).eq('id', orderId);
 
-        _stopSharingLocation();
+        _removeActiveOrder(orderId);
 
         _snack('¡Pedido marcado como entregado!');
       } catch (e) {
@@ -302,7 +335,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'paid_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', orderId);
 
-      _stopSharingLocation();
+      _removeActiveOrder(orderId);
 
       _snack(
         '¡Pedido entregado y cobrado en '
@@ -343,7 +376,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         'status': 'en camino',
       }).eq('id', orderId);
 
-      await _startSharingLocation(orderId);
+      await _startSharingLocation({..._activeOrderIds, orderId});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -460,25 +493,26 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
 
             final allOrders = snapshot.data ?? [];
 
-            // Reanudar / detener la transmisión según el estado real en la BD.
-            if (snapshot.hasData) {
-              Map<String, dynamic>? myOnTheWay;
-              for (final o in allOrders) {
+            // Sincroniza la transmisión GPS con todos los pedidos activos.
+            final myActiveIds = <int>{
+              for (final o in allOrders)
                 if (o['status'] == 'en camino' &&
                     o['delivery_type'] == 'domicilio' &&
-                    o['delivery_driver_id'] == currentDriverId) {
-                  myOnTheWay = o;
-                  break;
+                    o['delivery_driver_id'] == currentDriverId)
+                  o['id'] as int,
+            };
+            if (snapshot.hasData) {
+              if (myActiveIds.isNotEmpty) {
+                final needsSync = _positionStream == null ||
+                    !setEquals(_activeOrderIds, myActiveIds);
+                if (needsSync && !_isStarting) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _startSharingLocation(myActiveIds);
+                  });
                 }
-              }
-              if (myOnTheWay != null && _positionStream == null && !_isStarting) {
-                final id = myOnTheWay['id'] as int;
+              } else if (_positionStream != null) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && _positionStream == null) _startSharingLocation(id);
-                });
-              } else if (myOnTheWay == null && _positionStream != null) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _stopSharingLocation();
+                  if (mounted) _stopSharingLocation();
                 });
               }
             }
@@ -530,7 +564,14 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       );
     }
 
-    return ListView.separated(
+    final myAssignedWithGps = orders.where((o) {
+      final assigned = o['delivery_driver_id'] == currentDriverId;
+      final lat = o['delivery_latitude'];
+      final lng = o['delivery_longitude'];
+      return assigned && lat != null && lng != null;
+    }).toList();
+
+    final list = ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: orders.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -705,7 +746,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                       ],
                     ],
                   ),
-                  if (isMyOrder && _activeOrderId == orderId)
+                  if (_activeOrderIds.contains(orderId))
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Row(
@@ -733,6 +774,508 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
           ),
         );
       },
+    );
+
+    if (isDeliveredView || myAssignedWithGps.isEmpty) {
+      return list;
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade800,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        _DriverRouteMapScreen(orders: myAssignedWithGps),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.map),
+              label: Text(
+                'Ver Mapa de Ruta (${myAssignedWithGps.length} pedido(s))',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: list),
+      ],
+    );
+  }
+}
+
+class _DriverRouteMapScreen extends StatefulWidget {
+  const _DriverRouteMapScreen({required this.orders});
+
+  final List<Map<String, dynamic>> orders;
+
+  @override
+  State<_DriverRouteMapScreen> createState() => _DriverRouteMapScreenState();
+}
+
+class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
+  static const LatLng _storeLocation = LatLng(14.643973, -91.120232);
+
+  final MapController _mapController = MapController();
+  StreamSubscription<Position>? _driverStream;
+  LatLng? _driverLocation;
+  int? _selectedOrderId;
+  bool _mapReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDriverLocation();
+  }
+
+  @override
+  void dispose() {
+    _driverStream?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initDriverLocation() async {
+    try {
+      final position = await Geolocator.getCurrentPosition();
+      _onDriverPosition(position);
+    } catch (_) {}
+
+    try {
+      _driverStream = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen(
+        _onDriverPosition,
+        onError: (Object e) => debugPrint('Error en stream GPS del mapa: $e'),
+      );
+    } catch (e) {
+      debugPrint('No se pudo iniciar el GPS del mapa: $e');
+    }
+  }
+
+  void _onDriverPosition(Position position) {
+    if (!mounted) return;
+    final location = LatLng(position.latitude, position.longitude);
+    final shouldFit = _driverLocation == null;
+    setState(() => _driverLocation = location);
+    if (shouldFit) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fitAll());
+    }
+  }
+
+  void _fitAll() {
+    if (!mounted || !_mapReady) return;
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: _fitBounds(),
+          padding: const EdgeInsets.all(60),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  LatLngBounds _fitBounds() {
+    final points = <LatLng>[
+      _storeLocation,
+      for (final order in widget.orders)
+        if (_orderPoint(order) != null) _orderPoint(order)!,
+      ?_driverLocation,
+    ];
+
+    if (points.length == 1) {
+      points.add(
+        LatLng(
+          points.first.latitude + 0.001,
+          points.first.longitude + 0.001,
+        ),
+      );
+    }
+
+    return LatLngBounds.fromPoints(points);
+  }
+
+  LatLng? _orderPoint(Map<String, dynamic> order) {
+    final lat = order['delivery_latitude'];
+    final lng = order['delivery_longitude'];
+    if (lat is num && lng is num) {
+      return LatLng(lat.toDouble(), lng.toDouble());
+    }
+    return null;
+  }
+
+  String _customerName(Map<String, dynamic> order) {
+    final raw = (order['customer_name'] ?? '').toString().trim();
+    return raw.isEmpty ? 'Sin nombre' : raw;
+  }
+
+  Future<void> _openMaps(double? lat, double? lng) async {
+    if (lat == null || lng == null) return;
+    final url = Uri.parse(LocationService.getGoogleMapsUrl(lat, lng));
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _showContactOptions(String phone, String customerName) async {
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleanPhone.isEmpty || phone == 'Sin número') return;
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Contactar a $customerName ($phone)',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.call),
+                ),
+                title: const Text('Llamar por Teléfono'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final uri = Uri.parse('tel:$cleanPhone');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.chat),
+                ),
+                title: const Text('Escribir por WhatsApp'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final waNumber =
+                      cleanPhone.length == 8 ? '502$cleanPhone' : cleanPhone;
+                  final uri = Uri.parse(
+                    'https://wa.me/$waNumber?text=Hola%20${Uri.encodeComponent(customerName)},%20soy%20tu%20repartidor%20de%20K\'OTEMAL,%20voy%20en%20camino%20con%20tu%20pedido.',
+                  );
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStoreMarker() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.orange, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: const CircleAvatar(
+        radius: 18,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.orange,
+        child: Icon(Icons.store),
+      ),
+    );
+  }
+
+  Widget _buildDriverMarker() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: const CircleAvatar(
+        radius: 18,
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        child: Icon(Icons.two_wheeler),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryMarker(Map<String, dynamic> order) {
+    final orderId = order['id'];
+    final isSelected = _selectedOrderId == orderId;
+    final color = isSelected ? Colors.deepOrange.shade900 : Colors.deepOrange;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 130),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: isSelected ? color : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+          child: Text(
+            _customerName(order),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.white : Colors.black87,
+            ),
+          ),
+        ),
+        Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            Icon(Icons.location_pin, size: 46, color: color),
+            Positioned(
+              top: 8,
+              child: Text(
+                '#$orderId',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  List<Marker> _buildMarkers() {
+    final markers = <Marker>[
+      Marker(
+        point: _storeLocation,
+        width: 70,
+        height: 70,
+        alignment: Alignment.center,
+        child: _buildStoreMarker(),
+      ),
+    ];
+
+    for (final order in widget.orders) {
+      final point = _orderPoint(order);
+      if (point == null) continue;
+      final orderId = order['id'] as int;
+      markers.add(
+        Marker(
+          point: point,
+          width: 140,
+          height: 84,
+          alignment: Alignment.bottomCenter,
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedOrderId = orderId),
+            child: _buildDeliveryMarker(order),
+          ),
+        ),
+      );
+    }
+
+    final driverLocation = _driverLocation;
+    if (driverLocation != null) {
+      markers.add(
+        Marker(
+          point: driverLocation,
+          width: 60,
+          height: 60,
+          alignment: Alignment.center,
+          child: _buildDriverMarker(),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  Widget _buildSelectedOrderCard(BuildContext context) {
+    Map<String, dynamic>? selected;
+    for (final order in widget.orders) {
+      if (order['id'] == _selectedOrderId) {
+        selected = order;
+        break;
+      }
+    }
+
+    if (selected == null) return const SizedBox.shrink();
+
+    final order = selected;
+    final orderId = order['id'];
+    final phone = (order['customer_phone'] ?? 'Sin número').toString();
+    final notes = (order['delivery_notes'] ?? 'Sin referencias').toString();
+    final total = order['total']?.toString() ?? '0.0';
+    final lat = order['delivery_latitude'];
+    final lng = order['delivery_longitude'];
+
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Orden #$orderId',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(() => _selectedOrderId = null),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            Text(
+              'Cliente: ${_customerName(order)}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text('Referencia: $notes'),
+            const SizedBox(height: 4),
+            Text(
+              'Total: Q$total',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey.shade800,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => _openMaps(
+                      lat is num ? lat.toDouble() : null,
+                      lng is num ? lng.toDouble() : null,
+                    ),
+                    icon: const Icon(Icons.directions, size: 18),
+                    label: const Text('Google Maps'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => _showContactOptions(
+                      phone,
+                      _customerName(order),
+                    ),
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text('Contactar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Mapa de Ruta'),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+      ),
+      body: Stack(
+        children: [
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCameraFit: CameraFit.bounds(
+                bounds: _fitBounds(),
+                padding: const EdgeInsets.all(60),
+              ),
+              onMapReady: () {
+                _mapReady = true;
+                if (_driverLocation != null) _fitAll();
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.kotemal.app',
+              ),
+              MarkerLayer(markers: _buildMarkers()),
+            ],
+          ),
+          if (_selectedOrderId != null)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: MediaQuery.of(context).padding.bottom + 12,
+              child: _buildSelectedOrderCard(context),
+            ),
+        ],
+      ),
     );
   }
 }
