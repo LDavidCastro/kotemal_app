@@ -13,7 +13,9 @@ import '../../cart/presentation/cart_controller.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
 
 class DeliveryScreen extends ConsumerStatefulWidget {
-  const DeliveryScreen({super.key});
+  const DeliveryScreen({super.key, this.initialName});
+
+  final String? initialName;
 
   @override
   ConsumerState<DeliveryScreen> createState() => _DeliveryScreenState();
@@ -21,6 +23,7 @@ class DeliveryScreen extends ConsumerStatefulWidget {
 
 class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
   final MapController _mapController = MapController();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
@@ -33,27 +36,39 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserPhone();
+    final initialName = widget.initialName?.trim() ?? '';
+    if (initialName.isNotEmpty) {
+      _nameController.text = initialName;
+    }
+    _loadUserProfile();
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _notesController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadUserPhone() async {
+  Future<void> _loadUserProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final profile = await Supabase.instance.client
           .from('profiles')
-          .select('phone')
+          .select('full_name, phone')
           .eq('id', user.id)
           .maybeSingle();
 
-      if (mounted && profile != null && profile['phone'] != null) {
-        _phoneController.text = profile['phone'] as String;
+      if (mounted && profile != null) {
+        final fullName = (profile['full_name'] ?? '').toString().trim();
+        final phone = (profile['phone'] ?? '').toString().trim();
+        if (fullName.isNotEmpty && _nameController.text.trim().isEmpty) {
+          _nameController.text = fullName;
+        }
+        if (phone.isNotEmpty && _phoneController.text.trim().isEmpty) {
+          _phoneController.text = phone;
+        }
       }
     }
   }
@@ -95,6 +110,15 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     if (cartItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('El carrito está vacío.')),
+      );
+      return;
+    }
+
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingresa el nombre de quien recibe u ordena el pedido.'),
+        ),
       );
       return;
     }
@@ -155,6 +179,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
 
       final orderResponse = await supabase.from('orders').insert({
         'customer_id': currentUser?.id,
+        'customer_name': _nameController.text.trim(),
         'total': total,
         'status': 'pendiente',
         'delivery_type': 'domicilio',
@@ -231,7 +256,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
                         context,
                         MaterialPageRoute(builder: (_) => const AuthScreen()),
                       );
-                      if (mounted) _loadUserPhone();
+                        if (mounted) _loadUserProfile();
                     },
                     child: const Text('Entrar', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
@@ -299,6 +324,17 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
+                  TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre de quien recibe / ordena *',
+                      hintText: 'Ej. Juan Pérez',
+                      prefixIcon: Icon(Icons.person_outline),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,

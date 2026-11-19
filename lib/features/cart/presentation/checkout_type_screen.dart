@@ -19,6 +19,7 @@ class CheckoutTypeScreen extends ConsumerStatefulWidget {
 class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
   // Opciones: 'local', 'para_llevar', 'domicilio'
   String _selectedDeliveryType = 'local';
+  final _nameController = TextEditingController();
   final _tableController = TextEditingController();
   final _phoneController = TextEditingController();
   final _notesController = TextEditingController();
@@ -27,28 +28,36 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserPhone();
+    _loadUserProfile();
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _tableController.dispose();
     _phoneController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadUserPhone() async {
+  Future<void> _loadUserProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final profile = await Supabase.instance.client
           .from('profiles')
-          .select('phone')
+          .select('full_name, phone')
           .eq('id', user.id)
           .maybeSingle();
 
-      if (mounted && profile != null && profile['phone'] != null) {
-        _phoneController.text = profile['phone'] as String;
+      if (mounted && profile != null) {
+        final fullName = (profile['full_name'] ?? '').toString().trim();
+        final phone = (profile['phone'] ?? '').toString().trim();
+        if (fullName.isNotEmpty && _nameController.text.trim().isEmpty) {
+          _nameController.text = fullName;
+        }
+        if (phone.isNotEmpty && _phoneController.text.trim().isEmpty) {
+          _phoneController.text = phone;
+        }
       }
     }
   }
@@ -62,6 +71,15 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     if (_selectedDeliveryType == 'local' && _tableController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor indica tu número o nombre de mesa.')),
+      );
+      return;
+    }
+
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingresa el nombre de quien recibe u ordena el pedido.'),
+        ),
       );
       return;
     }
@@ -83,6 +101,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       // Inserción sin necesidad de GPS
       final orderResponse = await supabase.from('orders').insert({
         'customer_id': currentUser?.id,
+        'customer_name': _nameController.text.trim(),
         'total': total,
         'status': 'pendiente',
         'delivery_type': _selectedDeliveryType,
@@ -179,6 +198,18 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
             const SizedBox(height: 24),
 
             // Formulario según la opción seleccionada
+            TextField(
+              controller: _nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre de quien recibe / ordena *',
+                hintText: 'Ej. Juan Pérez',
+                prefixIcon: Icon(Icons.person_outline),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             if (_selectedDeliveryType == 'local') ...[
               TextField(
                 controller: _tableController,
@@ -243,7 +274,11 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const DeliveryScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => DeliveryScreen(
+                          initialName: _nameController.text.trim(),
+                        ),
+                      ),
                     );
                   },
                   icon: const Icon(Icons.map_outlined),

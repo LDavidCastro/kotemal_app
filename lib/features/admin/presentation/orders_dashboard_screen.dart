@@ -236,6 +236,9 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     final status = (order['status'] ?? 'pendiente') as String;
     final paymentStatus = (order['payment_status'] ?? 'pendiente') as String;
     final deliveryNotes = (order['delivery_notes'] ?? '').toString().trim();
+    final rawCustomerName = (order['customer_name'] ?? '').toString().trim();
+    final customerName =
+        rawCustomerName.isEmpty ? 'Cliente sin nombre' : rawCustomerName;
     final hasDeliveryNotes =
         deliveryNotes.isNotEmpty && deliveryNotes != 'Sin referencias';
     final createdAt = order['created_at'] != null
@@ -319,6 +322,26 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
                                   fontSize: 28,
                                   fontWeight: FontWeight.bold,
                                 ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.person,
+                                    size: 18,
+                                    color: Colors.deepOrange,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      customerName,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                               Wrap(
@@ -943,6 +966,9 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     final total = (order['total'] ?? 0.0).toString();
     final phone = order['customer_phone'] ?? 'Sin número';
     final notes = order['delivery_notes'] ?? 'Sin referencias';
+    final rawCustomerName = (order['customer_name'] ?? '').toString().trim();
+    final customerName =
+        rawCustomerName.isEmpty ? 'Cliente sin nombre' : rawCustomerName;
     final isGuest = order['customer_id'] == null;
     final lat = order['delivery_latitude'] as double?;
     final lng = order['delivery_longitude'] as double?;
@@ -1057,17 +1083,26 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
               Row(
                 children: [
                   Icon(
-                    isGuest ? Icons.person_outline : Icons.stars,
-                    size: 16,
+                    isGuest ? Icons.person_outline : Icons.person,
+                    size: 18,
                     color: isGuest ? Colors.grey : Colors.amber.shade800,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      customerName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                   Text(
                     isGuest ? 'Cliente Invitado' : 'Cliente Registrado (Suma Puntos)',
                     style: TextStyle(
                       color: isGuest ? Colors.grey.shade700 : Colors.amber.shade900,
-                      fontSize: 13,
-                      fontWeight: isGuest ? FontWeight.normal : FontWeight.bold,
+                      fontSize: 11,
                     ),
                   ),
                 ],

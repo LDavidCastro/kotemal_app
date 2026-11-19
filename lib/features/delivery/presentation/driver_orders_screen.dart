@@ -477,6 +477,9 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         final orderId = ord['id'] as int;
         final status = ord['status'] as String;
         final phone = ord['customer_phone'] ?? 'Sin número';
+        final rawCustomerName = (ord['customer_name'] ?? '').toString().trim();
+        final customerName =
+            rawCustomerName.isEmpty ? 'Sin nombre' : rawCustomerName;
         final notes = ord['delivery_notes'] ?? 'Sin referencias';
         final total = ord['total']?.toString() ?? '0.0';
         final lat = ord['delivery_latitude'] as double?;
@@ -521,6 +524,8 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
+                Text('Cliente: $customerName',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 Text('Teléfono: $phone'),
                 Text('Referencia: $notes'),
                 Text('Total: Q$total',
