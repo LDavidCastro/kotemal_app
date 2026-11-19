@@ -367,6 +367,68 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     }
   }
 
+  Future<void> _showContactOptions(String phone, String customerName) async {
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleanPhone.isEmpty || phone == 'Sin número') return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Contactar a $customerName ($phone)',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.call),
+                ),
+                title: const Text('Llamar por Teléfono'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final uri = Uri.parse('tel:$cleanPhone');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.chat),
+                ),
+                title: const Text('Escribir por WhatsApp'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  // Prefijo de Guatemala (+502) si tiene 8 dígitos
+                  final waNumber =
+                      cleanPhone.length == 8 ? '502$cleanPhone' : cleanPhone;
+                  final uri = Uri.parse(
+                    'https://wa.me/$waNumber?text=Hola%20${Uri.encodeComponent(customerName)},%20soy%20tu%20repartidor%20de%20K\'OTEMAL,%20voy%20en%20camino%20con%20tu%20pedido.',
+                  );
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentDriverId = _supabase.auth.currentUser?.id;
@@ -506,8 +568,23 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Orden #$orderId',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _showContactOptions(phone, customerName),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        child: Text(
+                          'Orden #$orderId',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
                     Chip(
                       label: Text(
                         status == 'listo'
@@ -526,7 +603,33 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                 const SizedBox(height: 6),
                 Text('Cliente: $customerName',
                     style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Teléfono: $phone'),
+                InkWell(
+                  onTap: () => _showContactOptions(phone, customerName),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.phone_in_talk,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Teléfono: $phone',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            decoration: TextDecoration.underline,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.chat, size: 16, color: Colors.green),
+                      ],
+                    ),
+                  ),
+                ),
                 Text('Referencia: $notes'),
                 Text('Total: Q$total',
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
