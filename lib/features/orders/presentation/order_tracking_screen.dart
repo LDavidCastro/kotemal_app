@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/location_service.dart';
+
 class OrderTrackingScreen extends StatefulWidget {
   final int orderId;
   const OrderTrackingScreen({super.key, required this.orderId});
@@ -15,6 +17,42 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   final _supabase = Supabase.instance.client;
   // Local K'OTEMAL (Sololá)
   final LatLng _restaurantLocation = const LatLng(14.643973, -91.120232);
+
+  List<LatLng> _routePoints = [];
+  LatLng? _lastRoutedOrigin;
+  int _etaMinutes = 0;
+  double _distanceKm = 0;
+  bool _isFetchingRoute = false;
+
+  Future<void> _updateRouteIfNeeded(
+    LatLng origin,
+    LatLng destination,
+  ) async {
+    if (_isFetchingRoute) return;
+
+    if (_routePoints.isNotEmpty && _lastRoutedOrigin != null) {
+      final movedMeters = const Distance().as(
+        LengthUnit.Meter,
+        _lastRoutedOrigin!,
+        origin,
+      );
+      if (movedMeters <= 40) return;
+    }
+
+    _lastRoutedOrigin = origin;
+    _isFetchingRoute = true;
+
+    final result = await LocationService().getDrivingRoute(origin, destination);
+
+    if (!mounted) return;
+
+    setState(() {
+      _routePoints = result.points;
+      _etaMinutes = result.durationMinutes;
+      _distanceKm = result.distanceKm;
+      _isFetchingRoute = false;
+    });
+  }
 
   int _getDeliveryStatusStep(String status) {
     switch (status) {
@@ -205,6 +243,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
           final currentStep = _getDeliveryStatusStep(status);
 
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _updateRouteIfNeeded(
+              driverLocation ?? _restaurantLocation,
+              clientLocation,
+            );
+          });
+
           return Column(
             children: [
               Container(
@@ -243,54 +288,105 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
               ),
               Expanded(
-                child: FlutterMap(
-                  options: MapOptions(
-                    initialCenter: clientLocation,
-                    initialZoom: 14,
-                  ),
+                child: Stack(
                   children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.kotemal.app',
-                    ),
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: [
-                            driverLocation ?? _restaurantLocation,
-                            clientLocation,
+                    FlutterMap(
+                      options: MapOptions(
+                        initialCenter: clientLocation,
+                        initialZoom: 14,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.kotemal.app',
+                        ),
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: _routePoints.isNotEmpty
+                                  ? _routePoints
+                                  : [
+                                      driverLocation ?? _restaurantLocation,
+                                      clientLocation,
+                                    ],
+                              strokeWidth: 5,
+                              color: Colors.blue.shade700,
+                            ),
                           ],
-                          strokeWidth: 4,
-                          color: Colors.blueAccent,
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _restaurantLocation,
+                              width: 45,
+                              height: 45,
+                              child: const Icon(Icons.store, color: Colors.deepOrange, size: 38),
+                            ),
+                            Marker(
+                              point: clientLocation,
+                              width: 45,
+                              height: 45,
+                              child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+                            ),
+                            if (driverLocation != null && status == 'en camino')
+                              Marker(
+                                point: driverLocation,
+                                width: 45,
+                                height: 45,
+                                child: const CircleAvatar(
+                                  backgroundColor: Colors.blue,
+                                  child: Icon(Icons.two_wheeler, color: Colors.white, size: 26),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: _restaurantLocation,
-                          width: 45,
-                          height: 45,
-                          child: const Icon(Icons.store, color: Colors.deepOrange, size: 38),
-                        ),
-                        Marker(
-                          point: clientLocation,
-                          width: 45,
-                          height: 45,
-                          child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-                        ),
-                        if (driverLocation != null && status == 'en camino')
-                          Marker(
-                            point: driverLocation,
-                            width: 45,
-                            height: 45,
-                            child: const CircleAvatar(
-                              backgroundColor: Colors.blue,
-                              child: Icon(Icons.two_wheeler, color: Colors.white, size: 26),
+                    if (_etaMinutes > 0)
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        right: 12,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  status == 'en camino'
+                                      ? Icons.directions_bike
+                                      : Icons.navigation,
+                                  color: Colors.blue.shade700,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Tiempo estimado: ~$_etaMinutes min (${_distanceKm.toStringAsFixed(1)} km)',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                      ),
                   ],
                 ),
               ),

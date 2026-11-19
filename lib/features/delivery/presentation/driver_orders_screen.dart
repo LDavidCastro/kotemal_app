@@ -231,7 +231,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     }
   }
 
-  Future<void> _confirmCompleteDelivery(int orderId) async {
+  Future<bool> _confirmCompleteDelivery(int orderId) async {
     String? paymentStatus;
     try {
       final order = await _supabase
@@ -242,10 +242,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       paymentStatus = order?['payment_status'] as String?;
     } catch (e) {
       _snack('Error al consultar el pago del pedido: $e');
-      return;
+      return false;
     }
 
-    if (!mounted) return;
+    if (!mounted) return false;
 
     // Pedido ya pagado: solo se confirma la entrega.
     if (paymentStatus == 'pagado') {
@@ -268,7 +268,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         ),
       );
 
-      if (!mounted || confirm != true) return;
+      if (!mounted || confirm != true) return false;
 
       try {
         await _supabase.from('orders').update({
@@ -278,10 +278,11 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         _removeActiveOrder(orderId);
 
         _snack('¡Pedido marcado como entregado!');
+        return true;
       } catch (e) {
         _snack('Error al completar pedido: $e');
+        return false;
       }
-      return;
     }
 
     // Pedido sin pagar: se registra el método de cobro y se marca como pagado.
@@ -325,7 +326,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       ),
     );
 
-    if (!mounted || selectedMethod == null) return;
+    if (!mounted || selectedMethod == null) return false;
 
     try {
       await _supabase.from('orders').update({
@@ -341,8 +342,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         '¡Pedido entregado y cobrado en '
         '${selectedMethod == 'efectivo' ? 'efectivo' : 'transferencia'}!',
       );
+      return true;
     } catch (e) {
       _snack('Error al completar pedido: $e');
+      return false;
     }
   }
 
@@ -796,8 +799,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        _DriverRouteMapScreen(orders: myAssignedWithGps),
+                    builder: (_) => _DriverRouteMapScreen(
+                      orders: myAssignedWithGps,
+                      onCompleteOrder: _confirmCompleteDelivery,
+                    ),
                   ),
                 );
               },
@@ -819,9 +824,13 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
 }
 
 class _DriverRouteMapScreen extends StatefulWidget {
-  const _DriverRouteMapScreen({required this.orders});
+  const _DriverRouteMapScreen({
+    required this.orders,
+    required this.onCompleteOrder,
+  });
 
   final List<Map<String, dynamic>> orders;
+  final Future<bool> Function(int orderId) onCompleteOrder;
 
   @override
   State<_DriverRouteMapScreen> createState() => _DriverRouteMapScreenState();
@@ -836,9 +845,20 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
   int? _selectedOrderId;
   bool _mapReady = false;
 
+  late List<Map<String, dynamic>> _remainingOrders;
+  List<LatLng> _routePoints = [];
+  LatLng? _lastRoutedOrigin;
+  int? _lastRoutedOrderId;
+  int _etaMinutes = 0;
+  double _distanceKm = 0;
+  bool _isFetchingRoute = false;
+  bool _manualSelection = false;
+
   @override
   void initState() {
     super.initState();
+    _remainingOrders = List<Map<String, dynamic>>.from(widget.orders);
+    _autoSelectNearest();
     _initDriverLocation();
   }
 
@@ -869,14 +889,138 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
     }
   }
 
+  Map<String, dynamic>? _findNearestOrder() {
+    if (_remainingOrders.isEmpty) return null;
+
+    final origin = _driverLocation ?? _storeLocation;
+    Map<String, dynamic>? nearest;
+    double? nearestDistance;
+
+    for (final order in _remainingOrders) {
+      final point = _orderPoint(order);
+      if (point == null) continue;
+      final distance = const Distance().as(LengthUnit.Meter, origin, point);
+      if (nearestDistance == null || distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = order;
+      }
+    }
+
+    return nearest;
+  }
+
+  void _autoSelectNearest() {
+    if (_manualSelection) return;
+    final nearest = _findNearestOrder();
+    final nearestId = nearest?['id'] as int?;
+    if (nearestId == null) return;
+    _selectedOrderId = nearestId;
+    _updateRouteToSelected();
+  }
+
+  Future<void> _updateRouteToSelected({bool force = false}) async {
+    final selectedId = _selectedOrderId;
+    if (selectedId == null) return;
+
+    Map<String, dynamic>? selected;
+    for (final order in _remainingOrders) {
+      if (order['id'] == selectedId) {
+        selected = order;
+        break;
+      }
+    }
+    if (selected == null) return;
+
+    final destination = _orderPoint(selected);
+    if (destination == null) return;
+
+    final origin = _driverLocation ?? _storeLocation;
+
+    if (!force &&
+        _lastRoutedOrderId == selectedId &&
+        _lastRoutedOrigin != null) {
+      final movedMeters = const Distance().as(
+        LengthUnit.Meter,
+        _lastRoutedOrigin!,
+        origin,
+      );
+      if (movedMeters <= 40) return;
+    }
+
+    if (_isFetchingRoute && !force) return;
+
+    _isFetchingRoute = true;
+    _lastRoutedOrigin = origin;
+    _lastRoutedOrderId = selectedId;
+
+    final result = await LocationService().getDrivingRoute(origin, destination);
+
+    if (!mounted) return;
+
+    if (_selectedOrderId != selectedId) {
+      setState(() => _isFetchingRoute = false);
+      return;
+    }
+
+    setState(() {
+      _routePoints = result.points;
+      _etaMinutes = result.durationMinutes;
+      _distanceKm = result.distanceKm;
+      _isFetchingRoute = false;
+    });
+  }
+
+  void _selectOrder(int orderId) {
+    setState(() {
+      _manualSelection = true;
+      _selectedOrderId = orderId;
+    });
+    _updateRouteToSelected(force: true);
+  }
+
   void _onDriverPosition(Position position) {
     if (!mounted) return;
     final location = LatLng(position.latitude, position.longitude);
-    final shouldFit = _driverLocation == null;
+    final isFirstFix = _driverLocation == null;
     setState(() => _driverLocation = location);
-    if (shouldFit) {
+    if (isFirstFix) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _fitAll());
+      if (!_manualSelection) {
+        final nearest = _findNearestOrder();
+        setState(() => _selectedOrderId = nearest?['id'] as int?);
+      }
     }
+    _updateRouteToSelected();
+  }
+
+  Future<void> _markSelectedAsDelivered(int orderId) async {
+    final completed = await widget.onCompleteOrder(orderId);
+    if (!completed || !mounted) return;
+
+    setState(() {
+      _remainingOrders.removeWhere((order) => order['id'] == orderId);
+      _selectedOrderId = null;
+      _routePoints = [];
+      _etaMinutes = 0;
+      _distanceKm = 0;
+      _lastRoutedOrderId = null;
+    });
+
+    if (_remainingOrders.isEmpty) {
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('¡Todas las entregas de la ruta fueron completadas!'),
+        ),
+      );
+      return;
+    }
+
+    _manualSelection = false;
+    final nearest = _findNearestOrder();
+    setState(() => _selectedOrderId = nearest?['id'] as int?);
+    _updateRouteToSelected(force: true);
   }
 
   void _fitAll() {
@@ -894,7 +1038,7 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
   LatLngBounds _fitBounds() {
     final points = <LatLng>[
       _storeLocation,
-      for (final order in widget.orders)
+      for (final order in _remainingOrders)
         if (_orderPoint(order) != null) _orderPoint(order)!,
       ?_driverLocation,
     ];
@@ -1104,7 +1248,7 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
       ),
     ];
 
-    for (final order in widget.orders) {
+    for (final order in _remainingOrders) {
       final point = _orderPoint(order);
       if (point == null) continue;
       final orderId = order['id'] as int;
@@ -1115,7 +1259,7 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
           height: 84,
           alignment: Alignment.bottomCenter,
           child: GestureDetector(
-            onTap: () => setState(() => _selectedOrderId = orderId),
+            onTap: () => _selectOrder(orderId),
             child: _buildDeliveryMarker(order),
           ),
         ),
@@ -1140,7 +1284,7 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
 
   Widget _buildSelectedOrderCard(BuildContext context) {
     Map<String, dynamic>? selected;
-    for (final order in widget.orders) {
+    for (final order in _remainingOrders) {
       if (order['id'] == _selectedOrderId) {
         selected = order;
         break;
@@ -1231,6 +1375,23 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () => _markSelectedAsDelivered(orderId as int),
+                icon: const Icon(Icons.check_circle),
+                label: const Text(
+                  'Entregado',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1264,9 +1425,66 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.kotemal.app',
               ),
+              if (_routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      strokeWidth: 5,
+                      color: Colors.blue.shade700,
+                    ),
+                  ],
+                ),
               MarkerLayer(markers: _buildMarkers()),
             ],
           ),
+          if (_selectedOrderId != null && _etaMinutes > 0)
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.navigation,
+                        color: Colors.blue.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Siguiente entrega: Orden #$_selectedOrderId · '
+                          '~$_etaMinutes min '
+                          '(${_distanceKm.toStringAsFixed(1)} km)',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (_selectedOrderId != null)
             Positioned(
               left: 12,
