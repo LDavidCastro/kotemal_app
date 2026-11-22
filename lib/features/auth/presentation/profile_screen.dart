@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/models/reward_tier.dart';
 import '../../../core/services/order_alert_service.dart';
 import '../../../core/widgets/alert_settings_sheet.dart';
 import '../../../core/widgets/app_update_card.dart';
@@ -186,6 +187,165 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  int _historyDelta(Map<String, dynamic> entry) {
+    final raw = entry['points'] ??
+        entry['points_change'] ??
+        entry['points_delta'] ??
+        entry['amount'];
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  String _historyDescription(Map<String, dynamic> entry) {
+    final raw = entry['description'] ??
+        entry['reason'] ??
+        entry['concept'] ??
+        entry['type'];
+    final text = raw?.toString().trim();
+    if (text == null || text.isEmpty) return 'Movimiento de puntos';
+    return text;
+  }
+
+  void _showRewardsModal() {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    final points = (_profileData?['points'] as num?)?.toInt() ?? 0;
+    final unlocked = RewardTier.bestAvailableFor(points);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(ctx).size.height * 0.85,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Recompensas K'OTEMAL",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              Text(
+                unlocked == null
+                    ? '$points puntos disponibles · Aún no desbloqueas descuentos'
+                    : '$points puntos disponibles · ${Formatters.currency(unlocked.discountAmount)} de descuento desbloqueado',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 8),
+              for (final tier in kRewardTiers)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    points >= tier.pointsRequired
+                        ? Icons.check_circle
+                        : Icons.lock_outline,
+                    color: points >= tier.pointsRequired
+                        ? Colors.green
+                        : Colors.grey,
+                  ),
+                  title: Text(
+                    tier.title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    '${tier.pointsRequired} pts · compra mínima ${Formatters.currency(tier.minFoodSubtotal)}',
+                  ),
+                ),
+              const Divider(),
+              const Text(
+                'Historial reciente',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: FutureBuilder(
+                  future: _supabase
+                      .from('rewards_history')
+                      .select()
+                      .eq('customer_id', user.id)
+                      .order('created_at', ascending: false)
+                      .limit(20),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text(
+                          'No se pudo cargar el historial de movimientos.',
+                        ),
+                      );
+                    }
+                    final history = snapshot.data ?? [];
+                    if (history.isEmpty) {
+                      return const Center(
+                        child: Text('Aún no tienes movimientos de puntos.'),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: history.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final entry = history[index];
+                        final delta = _historyDelta(entry);
+                        final isPositive = delta >= 0;
+
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            isPositive
+                                ? Icons.add_circle_outline
+                                : Icons.remove_circle_outline,
+                            color: isPositive ? Colors.green : Colors.red,
+                          ),
+                          title: Text(_historyDescription(entry)),
+                          subtitle: Text(
+                            _formatOrderDate(entry['created_at']),
+                          ),
+                          trailing: Text(
+                            isPositive ? '+$delta pts' : '$delta pts',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color:
+                                  isPositive ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -198,7 +358,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = _profileData?['full_name'] ?? 'Usuario K\'OTEMAL';
     final phone = _profileData?['phone'] ?? 'Sin número';
     final role = (_profileData?['role'] ?? 'cliente').toString().toUpperCase();
-    final points = _profileData?['points'] ?? 0;
+    final points = (_profileData?['points'] as num?)?.toInt() ?? 0;
+    final unlockedReward = RewardTier.bestAvailableFor(points);
 
     return Scaffold(
       appBar: AppBar(
@@ -240,7 +401,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListTile(
                 leading: const Icon(Icons.stars, color: Colors.amber, size: 36),
                 title: const Text('Puntos K\'OTEMAL'),
-                subtitle: Text('$points Puntos acumulados'),
+                subtitle: Text(
+                  unlockedReward == null
+                      ? '$points puntos acumulados · Aún no desbloqueas descuentos'
+                      : '$points puntos acumulados · ${Formatters.currency(unlockedReward.discountAmount)} de descuento desbloqueado',
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: _showRewardsModal,
               ),
             ),
             const SizedBox(height: 10),

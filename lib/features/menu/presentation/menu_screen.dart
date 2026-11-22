@@ -15,6 +15,7 @@ import '../../cart/presentation/cart_screen.dart';
 import '../../delivery/presentation/driver_orders_screen.dart';
 import 'product_customization_dialog.dart';
 
+import '../../../core/models/reward_tier.dart';
 import '../../../core/services/guest_orders_service.dart';
 import '../../../core/services/order_background_monitor.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
@@ -266,11 +267,54 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     );
   }
 
+  Widget _buildPointsBanner(
+    BuildContext context,
+    int points,
+    RewardTier reward,
+  ) {
+    return Material(
+      color: Colors.amber.shade50,
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CartScreen()),
+          );
+          ref.invalidate(userPointsProvider);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.stars, color: Colors.amber, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '¡Tienes $points pts! Canjea hasta Q${reward.discountAmount.toStringAsFixed(0)} de descuento en tu carrito',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 18, color: Colors.orange),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuListProvider);
     final cartCount = ref.watch(cartCountProvider);
     final currentUser = Supabase.instance.client.auth.currentUser;
+    final userPoints = ref.watch(userPointsProvider).valueOrNull ?? 0;
+    final bestReward = RewardTier.bestAvailableFor(userPoints);
+    final showPointsBanner =
+        currentUser != null && userPoints >= 150 && bestReward != null;
 
     final isAdmin = _userRole == 'admin';
     final isKitchen = _userRole == 'cocinero';
@@ -364,6 +408,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   );
                 }
                 _checkRole();
+                ref.invalidate(userPointsProvider);
               },
             ),
           ],
@@ -380,31 +425,54 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(child: Text('Error: $err')),
           data: (products) {
-            return TabBarView(
+            return Column(
               children: [
-                _ProductList(
-                  products: products
-                      .where((p) =>
-                          p.category.trim().toLowerCase().contains('comida'))
-                      .toList(),
-                  isAdmin: isAdmin,
-                  onRefresh: () => ref.invalidate(menuListProvider),
-                ),
-                _ProductList(
-                  products: products
-                      .where((p) =>
-                          p.category.trim().toLowerCase().contains('bebida'))
-                      .toList(),
-                  isAdmin: isAdmin,
-                  onRefresh: () => ref.invalidate(menuListProvider),
-                ),
-                _ProductList(
-                  products: products
-                      .where((p) =>
-                          p.category.trim().toLowerCase().contains('postre'))
-                      .toList(),
-                  isAdmin: isAdmin,
-                  onRefresh: () => ref.invalidate(menuListProvider),
+                if (showPointsBanner)
+                  _buildPointsBanner(context, userPoints, bestReward),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _ProductList(
+                        products: products
+                            .where((p) => p.category
+                                .trim()
+                                .toLowerCase()
+                                .contains('comida'))
+                            .toList(),
+                        isAdmin: isAdmin,
+                        onRefresh: () => ref.invalidate(menuListProvider),
+                        maxRewardDiscount: showPointsBanner
+                            ? bestReward.discountAmount
+                            : null,
+                      ),
+                      _ProductList(
+                        products: products
+                            .where((p) => p.category
+                                .trim()
+                                .toLowerCase()
+                                .contains('bebida'))
+                            .toList(),
+                        isAdmin: isAdmin,
+                        onRefresh: () => ref.invalidate(menuListProvider),
+                        maxRewardDiscount: showPointsBanner
+                            ? bestReward.discountAmount
+                            : null,
+                      ),
+                      _ProductList(
+                        products: products
+                            .where((p) => p.category
+                                .trim()
+                                .toLowerCase()
+                                .contains('postre'))
+                            .toList(),
+                        isAdmin: isAdmin,
+                        onRefresh: () => ref.invalidate(menuListProvider),
+                        maxRewardDiscount: showPointsBanner
+                            ? bestReward.discountAmount
+                            : null,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             );
@@ -420,13 +488,14 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                       heroTag: 'btn_cart',
                       backgroundColor: Colors.deepOrange,
                       foregroundColor: Colors.white,
-                      onPressed: () {
-                        Navigator.push(
+                      onPressed: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const CartScreen(),
                           ),
                         );
+                        ref.invalidate(userPointsProvider);
                       },
                       icon: const Icon(Icons.shopping_bag_outlined),
                       label: Text('Ver Carrito ($cartCount)'),
@@ -458,11 +527,12 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     heroTag: 'btn_cart',
                     backgroundColor: Colors.deepOrange,
                     foregroundColor: Colors.white,
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const CartScreen()),
                       );
+                      ref.invalidate(userPointsProvider);
                     },
                     icon: const Icon(Icons.shopping_bag_outlined),
                     label: Text('Ver Carrito ($cartCount)'),
@@ -477,11 +547,13 @@ class _ProductList extends ConsumerWidget {
   final List<Product> products;
   final bool isAdmin;
   final VoidCallback onRefresh;
+  final double? maxRewardDiscount;
 
   const _ProductList({
     required this.products,
     required this.isAdmin,
     required this.onRefresh,
+    this.maxRewardDiscount,
   });
 
   Future<void> _handleProductTap(
@@ -549,6 +621,8 @@ class _ProductList extends ConsumerWidget {
       itemBuilder: (context, index) {
         final item = products[index];
         final isAvailable = item.isAvailable;
+        final isRewardEligible =
+            maxRewardDiscount != null && item.price <= maxRewardDiscount!;
 
         final int itemCountInCart = cartItems
             .where((ci) => ci.product.id == item.id)
@@ -678,10 +752,34 @@ class _ProductList extends ConsumerWidget {
                                         : TextDecoration.lineThrough,
                                   ),
                                 ),
+                                if (isRewardEligible) ...[
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: Colors.green.shade200,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Canjeable con puntos',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.green.shade800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 4),
                                 Text(
                                   item.description ?? '',
-                                  maxLines: 2,
+                                  maxLines: isRewardEligible ? 1 : 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 12,

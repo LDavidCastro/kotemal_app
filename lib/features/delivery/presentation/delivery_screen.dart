@@ -105,7 +105,16 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
 
   Future<void> _submitOrder() async {
     final cartItems = ref.read(cartProvider);
-    final total = ref.read(cartTotalProvider);
+    final subtotal = ref.read(cartTotalProvider);
+    final selectedReward = ref.read(selectedRewardProvider);
+
+    final reward = selectedReward != null &&
+            subtotal >= selectedReward.minFoodSubtotal
+        ? selectedReward
+        : null;
+    final total = (subtotal - (reward?.discountAmount ?? 0))
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     if (cartItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -207,7 +216,29 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
         await GuestOrdersService.saveOrderId(orderId);
       }
 
+      if (reward != null && currentUser != null) {
+        try {
+          await supabase.rpc('redeem_order_points', params: {
+            'p_order_id': orderId,
+            'p_points_to_redeem': reward.pointsRequired,
+            'p_food_subtotal': subtotal,
+          });
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Pedido creado, pero no se pudo canjear la recompensa: $e',
+                ),
+              ),
+            );
+          }
+        }
+      }
+
+      ref.read(selectedRewardProvider.notifier).state = null;
       ref.read(cartProvider.notifier).clearCart();
+      ref.invalidate(userPointsProvider);
 
       if (mounted) {
         Navigator.pushReplacement(

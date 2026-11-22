@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/models/reward_tier.dart';
+import '../../../core/utils/formatters.dart';
 import '../../menu/presentation/product_customization_dialog.dart';
 import 'cart_controller.dart';
 import 'checkout_type_screen.dart';
@@ -41,10 +43,135 @@ class CartScreen extends ConsumerWidget {
     }
   }
 
+  Widget _buildRewardCard(
+    WidgetRef ref,
+    int points,
+    double subtotal,
+    RewardTier? applied,
+  ) {
+    final bestByPoints = RewardTier.bestAvailableFor(points);
+    final missingSubtotalTier =
+        bestByPoints != null && subtotal < bestByPoints.minFoodSubtotal
+            ? bestByPoints
+            : null;
+
+    return Card(
+      elevation: 0,
+      color: Colors.amber.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.amber.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.stars, color: Colors.amber, size: 22),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    "Canjear Puntos K'OTEMAL",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$points pts',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final tier in kRewardTiers)
+                  _buildRewardChip(ref, tier, points, subtotal, applied),
+              ],
+            ),
+            if (missingSubtotalTier != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Agrega ${Formatters.currency(missingSubtotalTier.minFoodSubtotal - subtotal)} más para usar este cupón de ${Formatters.currency(missingSubtotalTier.discountAmount)}.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange.shade900,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRewardChip(
+    WidgetRef ref,
+    RewardTier tier,
+    int points,
+    double subtotal,
+    RewardTier? applied,
+  ) {
+    final enoughPoints = points >= tier.pointsRequired;
+    final enoughSubtotal = subtotal >= tier.minFoodSubtotal;
+    final canSelect = enoughPoints && enoughSubtotal;
+    final selected = applied?.pointsRequired == tier.pointsRequired;
+
+    final label = enoughPoints
+        ? 'Q${tier.discountAmount.toStringAsFixed(0)} · ${tier.pointsRequired} pts'
+        : 'Faltan ${tier.pointsRequired - points} pts';
+
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      selectedColor: Colors.green.shade100,
+      labelStyle: TextStyle(
+        fontSize: 11,
+        color: canSelect ? Colors.green.shade900 : Colors.grey.shade600,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      ),
+      avatar: enoughPoints
+          ? null
+          : Icon(
+              Icons.lock_outline,
+              size: 14,
+              color: Colors.grey.shade500,
+            ),
+      onSelected: canSelect
+          ? (value) {
+              ref.read(selectedRewardProvider.notifier).state =
+                  value ? tier : null;
+            }
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cartItems = ref.watch(cartProvider);
     final total = ref.watch(cartTotalProvider);
+    final userPoints = ref.watch(userPointsProvider).valueOrNull ?? 0;
+    final selectedReward = ref.watch(selectedRewardProvider);
+
+    final appliedReward = selectedReward != null &&
+            total >= selectedReward.minFoodSubtotal
+        ? selectedReward
+        : null;
+    final discount = appliedReward?.discountAmount ?? 0;
+    final discountedTotal = total - discount;
+    final totalToPay = discountedTotal < 0 ? 0.0 : discountedTotal;
+    final pointsToEarn = (totalToPay * 0.5).round();
 
     return Scaffold(
       appBar: AppBar(
@@ -262,24 +389,116 @@ class CartScreen extends ConsumerWidget {
                   ),
                   child: SafeArea(
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Total:',
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              'Q${total.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
+                        if (userPoints >= 150) ...[
+                          _buildRewardCard(ref, userPoints, total, appliedReward),
+                          const SizedBox(height: 12),
+                        ],
+                        if (appliedReward != null) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Subtotal:'),
+                              Text(Formatters.currency(total)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Descuento por puntos (-${appliedReward.pointsRequired} pts):',
+                                  style: TextStyle(
+                                    color: Colors.green.shade800,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
+                              Text(
+                                '-${Formatters.currency(discount)}',
+                                style: TextStyle(
+                                  color: Colors.green.shade800,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total a pagar:',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                Formatters.currency(totalToPay),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
                             ),
-                          ],
-                        ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.stars,
+                                  size: 16,
+                                  color: Colors.green,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Ganarás +$pointsToEarn puntos al recibir tu pedido',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade800,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total:',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                Formatters.currency(totalToPay),
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,

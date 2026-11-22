@@ -1,4 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/models/reward_tier.dart';
 import '../../menu/domain/product.dart';
 
 class CartItem {
@@ -32,7 +35,21 @@ class CartItem {
 }
 
 class CartNotifier extends StateNotifier<List<CartItem>> {
-  CartNotifier() : super([]);
+  CartNotifier(this._ref) : super([]);
+
+  final Ref _ref;
+
+  double get _subtotal =>
+      state.fold(0.0, (sum, item) => sum + item.subtotal);
+
+  void _validateSelectedReward() {
+    final reward = _ref.read(selectedRewardProvider);
+    if (reward == null) return;
+
+    if (state.isEmpty || _subtotal < reward.minFoodSubtotal) {
+      _ref.read(selectedRewardProvider.notifier).state = null;
+    }
+  }
 
   void addProduct(Product product, {String? notes, double? customPrice}) {
     final finalPrice = customPrice ?? product.price;
@@ -61,6 +78,8 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
         ),
       ];
     }
+
+    _validateSelectedReward();
   }
 
   void updateQuantity(int productId, int quantity, {String? notes}) {
@@ -78,6 +97,8 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
         return item;
       }).toList();
     }
+
+    _validateSelectedReward();
   }
 
   // Método para editar los ingredientes y precio sin borrar el elemento
@@ -99,13 +120,33 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
       updated,
       ...state.sublist(index + 1),
     ];
+
+    _validateSelectedReward();
   }
 
-  void clearCart() => state = [];
+  void clearCart() {
+    state = [];
+    _ref.read(selectedRewardProvider.notifier).state = null;
+  }
 }
 
 final cartProvider = StateNotifierProvider<CartNotifier, List<CartItem>>((ref) {
-  return CartNotifier();
+  return CartNotifier(ref);
+});
+
+final selectedRewardProvider = StateProvider<RewardTier?>((ref) => null);
+
+final userPointsProvider = FutureProvider.autoDispose<int>((ref) async {
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) return 0;
+
+  final data = await Supabase.instance.client
+      .from('profiles')
+      .select('points')
+      .eq('id', user.id)
+      .maybeSingle();
+
+  return (data?['points'] as num?)?.toInt() ?? 0;
 });
 
 final cartTotalProvider = Provider<double>((ref) {

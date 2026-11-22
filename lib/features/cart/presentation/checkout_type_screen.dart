@@ -64,7 +64,16 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
   Future<void> _submitOnSiteOrder() async {
     final cartItems = ref.read(cartProvider);
-    final total = ref.read(cartTotalProvider);
+    final subtotal = ref.read(cartTotalProvider);
+    final selectedReward = ref.read(selectedRewardProvider);
+
+    final reward = selectedReward != null &&
+            subtotal >= selectedReward.minFoodSubtotal
+        ? selectedReward
+        : null;
+    final total = (subtotal - (reward?.discountAmount ?? 0))
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     if (cartItems.isEmpty) return;
 
@@ -128,7 +137,29 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
         await GuestOrdersService.saveOrderId(orderId);
       }
 
+      if (reward != null && currentUser != null) {
+        try {
+          await supabase.rpc('redeem_order_points', params: {
+            'p_order_id': orderId,
+            'p_points_to_redeem': reward.pointsRequired,
+            'p_food_subtotal': subtotal,
+          });
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Pedido creado, pero no se pudo canjear la recompensa: $e',
+                ),
+              ),
+            );
+          }
+        }
+      }
+
+      ref.read(selectedRewardProvider.notifier).state = null;
       ref.read(cartProvider.notifier).clearCart();
+      ref.invalidate(userPointsProvider);
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -151,7 +182,15 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final total = ref.watch(cartTotalProvider);
+    final subtotal = ref.watch(cartTotalProvider);
+    final selectedReward = ref.watch(selectedRewardProvider);
+    final appliedReward = selectedReward != null &&
+            subtotal >= selectedReward.minFoodSubtotal
+        ? selectedReward
+        : null;
+    final total = (subtotal - (appliedReward?.discountAmount ?? 0))
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     return Scaffold(
       appBar: AppBar(
