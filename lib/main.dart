@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/constants/app_colors.dart';
+import 'core/services/order_background_monitor.dart';
 import 'core/services/supabase_service.dart';
 import 'features/menu/presentation/menu_screen.dart';
 
@@ -9,6 +11,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SupabaseService.initialize();
   runApp(const ProviderScope(child: KotemalApp()));
+
+  await OrderBackgroundMonitor.instance.start();
+  Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+    OrderBackgroundMonitor.instance.refreshSession();
+  });
 }
 
 class KotemalApp extends StatelessWidget {

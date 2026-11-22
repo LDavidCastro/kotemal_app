@@ -8,6 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/order_alert_service.dart';
+import '../../../core/widgets/alert_settings_sheet.dart';
 
 class DriverOrdersScreen extends StatefulWidget {
   const DriverOrdersScreen({super.key});
@@ -22,6 +24,12 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   static StreamSubscription<Position>? _positionStream;
   static Set<int> _activeOrderIds = <int>{};
   bool _isStarting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    OrderAlertService.instance.init();
+  }
 
   void _snack(String msg) {
     if (!mounted) return;
@@ -165,7 +173,22 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     }
   }
 
-  Future<void> _takeOrder(int orderId) async {
+  Future<void> _claimOrder(int orderId) async {
+    final driverId = _supabase.auth.currentUser?.id;
+    if (driverId == null) return;
+
+    try {
+      await _supabase.from('orders').update({
+        'delivery_driver_id': driverId,
+      }).eq('id', orderId);
+
+      _snack('Pedido apartado. Ya aparece en verde en tu lista.');
+    } catch (e) {
+      _snack('Error al tomar pedido: $e');
+    }
+  }
+
+  Future<void> _startDelivery(int orderId) async {
     final driverId = _supabase.auth.currentUser?.id;
     if (driverId == null) return;
 
@@ -177,11 +200,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
 
       await _startSharingLocation({..._activeOrderIds, orderId});
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al tomar pedido: $e')),
-        );
-      }
+      _snack('Error al iniciar entrega: $e');
     }
   }
 
@@ -476,6 +495,28 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
           title: const Text('Rutas y Entregas'),
           backgroundColor: Colors.blue.shade800,
           foregroundColor: Colors.white,
+          actions: [
+            ListenableBuilder(
+              listenable: OrderAlertService.instance,
+              builder: (context, _) {
+                final soundEnabled = OrderAlertService.instance.soundEnabled;
+                return IconButton(
+                  tooltip: soundEnabled
+                      ? 'Silenciar alertas'
+                      : 'Activar alertas',
+                  icon: Icon(
+                    soundEnabled ? Icons.volume_up : Icons.volume_off,
+                  ),
+                  onPressed: () => OrderAlertService.instance.toggleSound(),
+                );
+              },
+            ),
+            IconButton(
+              tooltip: 'Configurar alertas',
+              icon: const Icon(Icons.record_voice_over),
+              onPressed: () => showAlertSettingsSheet(context),
+            ),
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.white,
             tabs: [
@@ -520,17 +561,16 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               }
             }
 
-            // Pestaña 1: Por entregar (Filtrado estricto: solo entregas a domicilio)
+            // Pestaña 1: Por entregar (todos los pedidos a domicilio activos,
+            // estén libres o ya asignados a un repartidor).
             final pendingOrders = allOrders.where((o) {
               final st = o['status'];
               final type = o['delivery_type'] ?? 'domicilio';
-              final assignedId = o['delivery_driver_id'];
               return type == 'domicilio' &&
                   (st == 'en cocina' ||
                       st == 'listo' ||
                       st == 'en camino' ||
-                      st == 'pendiente') &&
-                  (assignedId == null || assignedId == currentDriverId);
+                      st == 'pendiente');
             }).toList();
 
             // Pestaña 2: Entregados (solo a domicilio completados)
@@ -591,7 +631,9 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         final lat = ord['delivery_latitude'] as double?;
         final lng = ord['delivery_longitude'] as double?;
         final assignedId = ord['delivery_driver_id'];
-        final isMyOrder = assignedId == currentDriverId;
+        final hasDriver = assignedId != null;
+        final isMyOrder = hasDriver && assignedId == currentDriverId;
+        final isOtherDriver = hasDriver && !isMyOrder;
         final paymentStatus = (ord['payment_status'] ?? 'pendiente') as String;
         final paymentMethod = ord['payment_method'] as String?;
         final isPaid = paymentStatus == 'pagado';
@@ -603,7 +645,22 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
 
         return Card(
           elevation: 3,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          color: isDeliveredView
+              ? null
+              : hasDriver
+                  ? Colors.green.shade50.withValues(alpha: 0.35)
+                  : Colors.red.shade50.withValues(alpha: 0.35),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: isDeliveredView
+                ? BorderSide.none
+                : BorderSide(
+                    color: hasDriver
+                        ? Colors.green.shade500
+                        : Colors.red.shade400,
+                    width: 2,
+                  ),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -644,6 +701,49 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                     ),
                   ],
                 ),
+                if (!isDeliveredView) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: hasDriver
+                            ? Colors.green.shade600
+                            : Colors.red.shade600,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            hasDriver
+                                ? Icons.check_circle
+                                : Icons.person_off,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            hasDriver
+                                ? (isMyOrder
+                                    ? 'TU PEDIDO'
+                                    : 'CON REPARTIDOR')
+                                : 'SIN REPARTIDOR',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text('Cliente: $customerName',
                     style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -720,33 +820,54 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           label: const Text('Maps'),
                         ),
                       const Spacer(),
-                      if (!isMyOrder)
+                      if (!hasDriver)
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade700,
+                            backgroundColor: Colors.red.shade600,
                             foregroundColor: Colors.white,
                           ),
-                          onPressed: () => _takeOrder(orderId),
-                          icon: const Icon(Icons.delivery_dining),
-                          label: const Text('Llevar este Pedido'),
+                          onPressed: () => _claimOrder(orderId),
+                          icon: const Icon(Icons.pan_tool_alt),
+                          label: const Text('Tomar Pedido'),
                         )
-                      else ...[
+                      else if (isMyOrder) ...[
                         OutlinedButton(
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
                           onPressed: () => _releaseOrder(orderId),
                           child: const Text('Soltar'),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
-                            foregroundColor: Colors.white,
+                        if (status != 'en camino')
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade700,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => _startDelivery(orderId),
+                            icon: const Icon(Icons.two_wheeler),
+                            label: const Text('Iniciar Entrega'),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () =>
+                                _confirmCompleteDelivery(orderId),
+                            icon: const Icon(Icons.check_circle),
+                            label: const Text('Entregado'),
                           ),
-                          onPressed: () => _confirmCompleteDelivery(orderId),
-                          icon: const Icon(Icons.check_circle),
-                          label: const Text('Entregado'),
+                      ] else if (isOtherDriver)
+                        const Text(
+                          'Asignado a otro repartidor',
+                          style: TextStyle(
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey,
+                          ),
                         ),
-                      ],
                     ],
                   ),
                   if (_activeOrderIds.contains(orderId))

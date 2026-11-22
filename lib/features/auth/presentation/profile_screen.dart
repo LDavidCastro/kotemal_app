@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/order_alert_service.dart';
+import '../../../core/widgets/alert_settings_sheet.dart';
 import '../../../core/widgets/app_update_card.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
 
@@ -58,6 +60,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _signOut() async {
     await _supabase.auth.signOut();
     if (mounted) Navigator.pop(context, true);
+  }
+
+  String _alertStatusLabel(OrderAlertService service) {
+    if (!service.soundEnabled) return 'Silenciado';
+
+    final mode = switch (service.alertMode) {
+      'voz' => 'Solo Voz',
+      'tono' => 'Solo Tono',
+      _ => 'Tono + Voz',
+    };
+
+    final name = service.selectedVoiceName;
+    String? voice;
+    if (name != null) {
+      for (final item in service.availableVoices) {
+        if (item['name']?.toLowerCase() == name.toLowerCase()) {
+          voice = item['label'];
+          break;
+        }
+      }
+    }
+    voice ??= name;
+
+    if (voice == null || voice.isEmpty) return mode;
+    return '$mode · $voice';
   }
 
   void _showMyOrdersModal() {
@@ -207,6 +234,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: const Text('Consultar estado y ver ruta en el mapa'),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: _showMyOrdersModal,
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: ListenableBuilder(
+                listenable: OrderAlertService.instance,
+                builder: (context, _) {
+                  final service = OrderAlertService.instance;
+                  return ListTile(
+                    leading: const Icon(
+                      Icons.notifications_active_outlined,
+                      color: Colors.deepOrange,
+                    ),
+                    title: const Text('Alertas y Sonidos'),
+                    subtitle: Text(
+                      _alertStatusLabel(service),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => showAlertSettingsSheet(context),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 14),

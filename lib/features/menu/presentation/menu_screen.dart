@@ -16,6 +16,7 @@ import '../../delivery/presentation/driver_orders_screen.dart';
 import 'product_customization_dialog.dart';
 
 import '../../../core/services/guest_orders_service.dart';
+import '../../../core/services/order_background_monitor.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
@@ -38,6 +39,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       if (mounted) setState(() => _userRole = 'cliente');
+      await OrderBackgroundMonitor.instance.refreshSession();
       return;
     }
 
@@ -54,6 +56,8 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     } catch (_) {
       if (mounted) setState(() => _userRole = 'cliente');
     }
+
+    await OrderBackgroundMonitor.instance.refreshSession();
   }
 
   /// Despliega el modal de pedidos tanto para invitados como para clientes registrados

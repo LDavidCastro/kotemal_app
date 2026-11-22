@@ -1,16 +1,27 @@
 package com.example.kotemal_app
 
+import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "kotemal/ringtones"
+    private val backgroundChannelName = "kotemal/background_alerts"
     private var currentRingtone: Ringtone? = null
+    private val audioManager by lazy {
+        getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -31,6 +42,42 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         } catch (e: Exception) {
                             result.error("PLAY_ERROR", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, backgroundChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startBackgroundService" -> {
+                        try {
+                            ContextCompat.startForegroundService(
+                                this,
+                                Intent(this, KotemalAlertForegroundService::class.java)
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("FOREGROUND_SERVICE_ERROR", e.message, null)
+                        }
+                    }
+                    "stopBackgroundService" -> {
+                        try {
+                            stopService(
+                                Intent(this, KotemalAlertForegroundService::class.java)
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("FOREGROUND_SERVICE_ERROR", e.message, null)
+                        }
+                    }
+                    "pingAlert" -> {
+                        try {
+                            KotemalAlertForegroundService.ping(this)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("FOREGROUND_SERVICE_ERROR", e.message, null)
                         }
                     }
                     else -> result.notImplemented()
@@ -68,11 +115,20 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    @Suppress("DEPRECATION")
     private fun playRingtone(uriString: String?) {
         try {
             currentRingtone?.stop()
         } catch (_: Exception) {}
         currentRingtone = null
+
+        try {
+            audioManager.requestAudioFocus(
+                audioFocusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            )
+        } catch (_: Exception) {}
 
         val uri: Uri? = if (!uriString.isNullOrBlank()) {
             Uri.parse(uriString)
@@ -93,6 +149,16 @@ class MainActivity : FlutterActivity() {
 
         ringtone.play()
         currentRingtone = ringtone
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                currentRingtone?.stop()
+            } catch (_: Exception) {}
+            currentRingtone = null
+            try {
+                audioManager.abandonAudioFocus(audioFocusListener)
+            } catch (_: Exception) {}
+        }, 6000L)
     }
 
     override fun onDestroy() {
