@@ -60,10 +60,26 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     await OrderBackgroundMonitor.instance.refreshSession();
   }
 
-  /// Despliega el modal de pedidos tanto para invitados como para clientes registrados
+  String _formatOrderTime(dynamic createdAt) {
+    final raw = createdAt?.toString();
+    if (raw == null) return '--:--';
+
+    final date = DateTime.tryParse(raw)?.toLocal();
+    if (date == null) return '--:--';
+
+    final hh = date.hour.toString().padLeft(2, '0');
+    final mm = date.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  /// Despliega el modal de pedidos del día, tanto para invitados como para clientes registrados
   void _showOrdersModal(BuildContext context) async {
     final currentUser = Supabase.instance.client.auth.currentUser;
     final bool isGuest = currentUser == null;
+
+    final now = DateTime.now();
+    final startOfDayIso =
+        DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
 
     List<int> guestOrderIds = [];
     if (isGuest) {
@@ -74,9 +90,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Sin pedidos recientes'),
+            title: const Text('Sin pedidos hoy'),
             content: const Text(
-              'Aún no has realizado pedidos desde este dispositivo o tu historial se encuentra vacío.',
+              'Aún no has realizado pedidos desde este dispositivo el día de hoy.',
             ),
             actions: [
               TextButton(
@@ -99,17 +115,19 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        // Query dinámica según si está autenticado o es invitado
+        // Solo pedidos realizados hoy, según si está autenticado o es invitado
         final ordersFuture = isGuest
             ? Supabase.instance.client
                 .from('orders')
                 .select('id, total, status, delivery_type, created_at')
                 .inFilter('id', guestOrderIds)
+                .gte('created_at', startOfDayIso)
                 .order('id', ascending: false)
             : Supabase.instance.client
                 .from('orders')
                 .select('id, total, status, delivery_type, created_at')
                 .eq('customer_id', currentUser.id)
+                .gte('created_at', startOfDayIso)
                 .order('id', ascending: false);
 
         return Container(
@@ -122,7 +140,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    isGuest ? 'Mis Pedidos (Invitado)' : 'Mis Pedidos',
+                    isGuest ? 'Pedidos de Hoy (Invitado)' : 'Pedidos de Hoy',
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   IconButton(
@@ -163,8 +181,37 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     }
                     final orders = snapshot.data ?? [];
                     if (orders.isEmpty) {
-                      return const Center(
-                        child: Text('No tienes pedidos registrados aún.'),
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.receipt_long_outlined,
+                                size: 48,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'No tienes pedidos realizados hoy.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              if (!isGuest) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Puedes revisar tu historial completo en Mi Perfil -> Mis Pedidos.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       );
                     }
                     return ListView.separated(
@@ -193,7 +240,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                             'Orden #$id - Q$total',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text('Estado: $st'),
+                          subtitle: Text(
+                            'Estado: $st · Hora: ${_formatOrderTime(ord['created_at'])}',
+                          ),
                           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                           onTap: () {
                             Navigator.pop(ctx);

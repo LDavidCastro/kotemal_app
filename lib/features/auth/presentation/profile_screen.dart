@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/order_alert_service.dart';
 import '../../../core/widgets/alert_settings_sheet.dart';
 import '../../../core/widgets/app_update_card.dart';
+import '../../../core/utils/formatters.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -87,6 +88,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$mode · $voice';
   }
 
+  String _deliveryTypeLabel(dynamic type) {
+    switch (type?.toString()) {
+      case 'local':
+        return 'En local';
+      case 'para_llevar':
+        return 'Para llevar';
+      case 'domicilio':
+        return 'Domicilio';
+      default:
+        return type?.toString() ?? 'No especificada';
+    }
+  }
+
+  String _formatOrderDate(dynamic createdAt) {
+    final raw = createdAt?.toString();
+    if (raw == null) return 'Fecha desconocida';
+
+    final date = DateTime.tryParse(raw)?.toLocal();
+    if (date == null) return 'Fecha desconocida';
+
+    return Formatters.dateTime(date);
+  }
+
   void _showMyOrdersModal() {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
@@ -102,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Mis Pedidos Recientes',
+                'Historial de Pedidos',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const Divider(),
@@ -110,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: FutureBuilder(
                   future: _supabase
                       .from('orders')
-                      .select('id, total, status, created_at')
+                      .select('id, total, status, delivery_type, created_at')
                       .eq('customer_id', user.id)
                       .order('id', ascending: false),
                   builder: (context, snapshot) {
@@ -127,13 +151,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       itemBuilder: (context, index) {
                         final ord = orders[index];
                         final id = ord['id'] as int;
-                        final total = ord['total'];
+                        final total = (ord['total'] as num?) ?? 0;
                         final st = ord['status'];
+                        final type = _deliveryTypeLabel(ord['delivery_type']);
+                        final date = _formatOrderDate(ord['created_at']);
 
                         return ListTile(
+                          isThreeLine: true,
                           leading: const Icon(Icons.delivery_dining, color: Colors.deepOrange),
-                          title: Text('Orden #$id - Q$total', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Estado: ${st.toString().toUpperCase()}'),
+                          title: Text('Orden #$id', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(
+                            '$date · $type\nTotal: ${Formatters.currency(total)} · Estado: ${st.toString().toUpperCase()}',
+                          ),
                           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                           onTap: () {
                             Navigator.pop(ctx);
