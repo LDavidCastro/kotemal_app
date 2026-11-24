@@ -32,6 +32,8 @@ class _ProductCustomizationDialogState
 
   List<dynamic> _removables = [];
   List<dynamic> _extras = [];
+  List<dynamic> _variants = [];
+  Map<String, dynamic>? _selectedVariant;
 
   final Set<String> _removedIngredients = {};
   final Set<int> _selectedExtraIds = {};
@@ -63,6 +65,29 @@ class _ProductCustomizationDialogState
       final removablesList =
           items.where((i) => i['type'] == 'removable').toList();
       final extrasList = items.where((i) => i['type'] == 'extra').toList();
+      final variantsList = items.where((i) => i['type'] == 'variant').toList();
+
+      Map<String, dynamic>? selectedVariant;
+      if (variantsList.isNotEmpty) {
+        if (widget.initialNotes != null && widget.initialNotes!.isNotEmpty) {
+          final variantSections = widget.initialNotes!.split(' | ');
+          for (final section in variantSections) {
+            if (section.startsWith('OPCIÓN: ')) {
+              final variantName =
+                  section.replaceFirst('OPCIÓN: ', '').trim();
+              final match = variantsList.firstWhere(
+                (v) => (v['name'] as String).trim() == variantName,
+                orElse: () => null,
+              );
+              if (match != null) {
+                selectedVariant = Map<String, dynamic>.from(match as Map);
+                break;
+              }
+            }
+          }
+        }
+        selectedVariant ??= Map<String, dynamic>.from(variantsList.first);
+      }
 
       if (widget.initialNotes != null && widget.initialNotes!.isNotEmpty) {
         final sections = widget.initialNotes!.split(' | ');
@@ -92,6 +117,8 @@ class _ProductCustomizationDialogState
         setState(() {
           _removables = removablesList;
           _extras = extrasList;
+          _variants = variantsList;
+          _selectedVariant = selectedVariant;
           _isLoading = false;
         });
         _recalcExtras();
@@ -130,7 +157,10 @@ class _ProductCustomizationDialogState
 
   @override
   Widget build(BuildContext context) {
-    final finalPrice = widget.product.price + _extraTotal;
+    final basePrice = _selectedVariant != null
+        ? (_selectedVariant!['price'] as num).toDouble()
+        : widget.product.price;
+    final finalPrice = basePrice + _extraTotal;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -176,7 +206,7 @@ class _ProductCustomizationDialogState
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Base: Q${widget.product.price.toStringAsFixed(2)}',
+                      'Base: Q${basePrice.toStringAsFixed(2)}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -210,6 +240,46 @@ class _ProductCustomizationDialogState
                             ),
                           ),
                         const Divider(),
+                        if (_variants.isNotEmpty) ...[
+                          const Text(
+                            'Elige una opción:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          RadioGroup<int>(
+                            groupValue: _selectedVariant?['id'] as int?,
+                            onChanged: (id) {
+                              if (id == null) return;
+                              setState(() {
+                                _selectedVariant = Map<String, dynamic>.from(
+                                  _variants.firstWhere(
+                                    (v) => v['id'] == id,
+                                    orElse: () => null,
+                                  ) as Map,
+                                );
+                              });
+                            },
+                            child: Column(
+                              children: _variants.map((variant) {
+                                final name = variant['name'] as String;
+                                final price =
+                                    (variant['price'] as num).toDouble();
+                                return RadioListTile<int>(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  value: variant['id'] as int,
+                                  title: Text(
+                                    '$name — Q${price.toStringAsFixed(2)}',
+                                  ),
+                                  activeColor: Colors.deepOrange,
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const Divider(),
+                        ],
                         if (_removables.isNotEmpty) ...[
                           const Text(
                             'Quitar ingredientes:',
@@ -286,7 +356,9 @@ class _ProductCustomizationDialogState
                               ),
                             ),
                           )
-                        else if (_removables.isEmpty && _extras.isEmpty)
+                        else if (_removables.isEmpty &&
+                            _extras.isEmpty &&
+                            _variants.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 16),
                             child: Center(
@@ -340,6 +412,10 @@ class _ProductCustomizationDialogState
                     ),
                     onPressed: () {
                       final notesParts = <String>[];
+                      if (_selectedVariant != null) {
+                        notesParts
+                            .add('OPCIÓN: ${_selectedVariant!['name']}');
+                      }
                       if (_removedIngredients.isNotEmpty) {
                         notesParts.add('SIN: ${_removedIngredients.join(', ')}');
                       }

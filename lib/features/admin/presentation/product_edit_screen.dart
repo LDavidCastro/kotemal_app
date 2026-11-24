@@ -23,6 +23,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   final _extraNameController = TextEditingController();
   final _extraPriceController = TextEditingController();
   final _removableController = TextEditingController();
+  final _variantNameController = TextEditingController();
+  final _variantPriceController = TextEditingController();
 
   String _category = 'Comidas';
   bool _isAvailable = true;
@@ -61,6 +63,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     _extraNameController.dispose();
     _extraPriceController.dispose();
     _removableController.dispose();
+    _variantNameController.dispose();
+    _variantPriceController.dispose();
     super.dispose();
   }
 
@@ -231,6 +235,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   Widget build(BuildContext context) {
     final removables = _customizations.where((c) => c['type'] == 'removable').toList();
     final extras = _customizations.where((c) => c['type'] == 'extra').toList();
+    final variants = _customizations.where((c) => c['type'] == 'variant').toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -376,6 +381,58 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             // 4. Sección de Ingredientes y Extras (Solo visible si ya tiene ID creado)
             if (isEditing) ...[
               const Divider(height: 36),
+              const Text(
+                '0. Variantes / Opciones de Precio (Ej. De Embutidos Q25, De Carne Q35):',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: _variantNameController,
+                      decoration: const InputDecoration(hintText: 'Ej. De Carne'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _variantPriceController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(hintText: 'Precio Q'),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28),
+                    onPressed: () {
+                      final price = double.tryParse(_variantPriceController.text) ?? 0.0;
+                      _addCustomization(name: _variantNameController.text, type: 'variant', price: price);
+                      _variantNameController.clear();
+                      _variantPriceController.clear();
+                    },
+                  ),
+                ],
+              ),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: variants.length,
+                itemBuilder: (ctx, i) {
+                  final v = variants[i];
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(v['name']),
+                    subtitle: Text('Q${(v['price'] as num).toStringAsFixed(2)}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _deleteCustomization(v['id']),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+
               const Text('1. Ingredientes que el cliente puede QUITAR:', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
               Row(
                 children: [
