@@ -14,6 +14,8 @@ import '../../cart/presentation/cart_controller.dart';
 import '../../cart/presentation/cart_screen.dart';
 import '../../delivery/presentation/driver_orders_screen.dart';
 import 'product_customization_dialog.dart';
+import 'widgets/product_image_viewer.dart';
+import '../../../core/utils/image_focus_helper.dart';
 
 import '../../../core/models/reward_tier.dart';
 import '../../../core/services/guest_orders_service.dart';
@@ -507,15 +509,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     backgroundColor: Colors.blue.shade800,
                     foregroundColor: Colors.white,
                     onPressed: () async {
-                      final created = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const ProductEditScreen(),
                         ),
                       );
-                      if (created == true) {
-                        ref.invalidate(menuListProvider);
-                      }
+                      ref.invalidate(menuListProvider);
                     },
                     icon: const Icon(Icons.add),
                     label: const Text('Nuevo Platillo'),
@@ -567,7 +567,8 @@ class _ProductList extends ConsumerWidget {
     }
 
     final cat = item.category.trim().toLowerCase();
-    final bool canCustomize = cat.contains('comida') || cat.contains('postre');
+    final bool canCustomize =
+        item.hasVariants || cat.contains('comida') || cat.contains('postre');
 
     if (canCustomize) {
       final CustomizedProductResult? result =
@@ -650,14 +651,14 @@ class _ProductList extends ConsumerWidget {
               onTap: isAvailable ? () => _handleProductTap(context, ref, item) : null,
               onLongPress: isAdmin
                   ? () async {
-                      final updated = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) =>
                               ProductEditScreen(product: item),
                         ),
                       );
-                      if (updated == true) onRefresh();
+                      onRefresh();
                     }
                   : null,
               child: Padding(
@@ -670,12 +671,41 @@ class _ProductList extends ConsumerWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                              ? Image.network(
-                                  item.imageUrl!,
-                                  width: 105,
-                                  height: 105,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => _defaultAvatar(item),
+                              ? GestureDetector(
+                                  onTap: () => showProductImageViewer(
+                                    context,
+                                    imageUrl: item.imageUrl!,
+                                    title: item.name,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      Image.network(
+                                        stripImageFocus(item.imageUrl!),
+                                        width: 105,
+                                        height: 105,
+                                        fit: BoxFit.cover,
+                                        alignment:
+                                            parseImageFocus(item.imageUrl),
+                                        errorBuilder: (_, _, _) => _defaultAvatar(item),
+                                      ),
+                                      Positioned(
+                                        bottom: 6,
+                                        right: 6,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black45,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(
+                                            Icons.zoom_in,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 )
                               : _defaultAvatar(item),
                         ),
@@ -793,7 +823,9 @@ class _ProductList extends ConsumerWidget {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  'Q${item.price.toStringAsFixed(2)}',
+                                  item.hasVariants
+                                      ? 'Desde Q${(item.minVariantPrice ?? item.price).toStringAsFixed(2)}'
+                                      : 'Q${item.price.toStringAsFixed(2)}',
                                   style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.bold,
@@ -809,14 +841,14 @@ class _ProductList extends ConsumerWidget {
                                         visualDensity: VisualDensity.compact,
                                         tooltip: 'Editar opciones y foto',
                                         onPressed: () async {
-                                          final updated = await Navigator.push(
+                                          await Navigator.push(
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) =>
                                                   ProductEditScreen(product: item),
                                             ),
                                           );
-                                          if (updated == true) onRefresh();
+                                          onRefresh();
                                         },
                                       ),
                                     if (isAvailable)

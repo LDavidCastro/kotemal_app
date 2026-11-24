@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/product.dart';
+import 'widgets/product_image_viewer.dart';
+import '../../../core/utils/image_focus_helper.dart';
 
 class CustomizedProductResult {
   final double finalPrice;
@@ -176,10 +178,19 @@ class _ProductCustomizationDialogState
                   width: double.infinity,
                   child: widget.product.imageUrl != null &&
                           widget.product.imageUrl!.isNotEmpty
-                      ? Image.network(
-                          widget.product.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _dialogPlaceholder(),
+                      ? GestureDetector(
+                          onTap: () => showProductImageViewer(
+                            context,
+                            imageUrl: widget.product.imageUrl!,
+                            title: widget.product.name,
+                          ),
+                          child: Image.network(
+                            stripImageFocus(widget.product.imageUrl!),
+                            fit: BoxFit.cover,
+                            alignment:
+                                parseImageFocus(widget.product.imageUrl),
+                            errorBuilder: (_, _, _) => _dialogPlaceholder(),
+                          ),
                         )
                       : _dialogPlaceholder(),
                 ),

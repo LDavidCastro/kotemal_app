@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/reward_tier.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/image_focus_helper.dart';
 import '../../menu/presentation/product_customization_dialog.dart';
 import 'cart_controller.dart';
 import 'checkout_type_screen.dart';
@@ -223,10 +224,12 @@ class CartScreen extends ConsumerWidget {
                                     child: item.product.imageUrl != null &&
                                             item.product.imageUrl!.isNotEmpty
                                         ? Image.network(
-                                            item.product.imageUrl!,
+                                            stripImageFocus(item.product.imageUrl!),
                                             width: 50,
                                             height: 50,
                                             fit: BoxFit.cover,
+                                            alignment: parseImageFocus(
+                                                item.product.imageUrl),
                                             errorBuilder: (_, _, _) => _avatar(item),
                                           )
                                         : _avatar(item),

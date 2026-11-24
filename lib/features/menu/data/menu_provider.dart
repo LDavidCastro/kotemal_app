@@ -5,7 +5,7 @@ import '../domain/product.dart';
 final menuListProvider = FutureProvider<List<Product>>((ref) async {
   final response = await Supabase.instance.client
       .from('products')
-      .select()
+      .select('*, product_customizations(type, price, is_available)')
       .eq('is_available', true)
       .order('category', ascending: true);
 

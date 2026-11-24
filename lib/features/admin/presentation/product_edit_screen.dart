@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../menu/domain/product.dart';
+import '../../menu/presentation/widgets/product_image_viewer.dart';
+import '../../../core/utils/image_focus_helper.dart';
+import '../../../core/widgets/image_focus_dialog.dart';
 
 class ProductEditScreen extends StatefulWidget {
   final Product? product; // Si es null, estamos CREANDO un producto nuevo
@@ -83,33 +86,92 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
   Future<void> _pickAndUploadImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    // Sin `imageQuality`: se sube el archivo original tal cual lo entrega el
+    // dispositivo, sin recortes ni recompresión.
+    final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
+    if (!mounted) return;
 
+    // 1. Subimos el archivo ORIGINAL completo, sin recortes ni reprocesos.
     setState(() => _isUploading = true);
+    String? publicUrl;
     try {
       final file = File(picked.path);
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final extension = picked.path.split('.').last.toLowerCase();
+      final safeExtension =
+          const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+              ? extension
+              : 'jpg';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}.$safeExtension';
 
       await _supabase.storage.from('menu-images').upload(fileName, file);
-      final publicUrl = _supabase.storage.from('menu-images').getPublicUrl(fileName);
-
-      if (isEditing && currentProductId != null) {
-        await _supabase.from('products').update({'image_url': publicUrl}).eq('id', currentProductId!);
-      }
-
-      setState(() => _imageUrl = publicUrl);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Foto lista y vinculada ✓')),
-        );
-      }
+      publicUrl = _supabase.storage.from('menu-images').getPublicUrl(fileName);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al subir imagen: $e')));
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
+    }
+
+    if (publicUrl == null || !mounted) return;
+
+    // 2. Vinculamos la URL base y luego dejamos elegir el punto de enfoque.
+    await _saveImageUrl(publicUrl);
+    if (!mounted) return;
+    await _adjustImageFocus(publicUrl);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Foto lista y vinculada ✓')),
+      );
+    }
+  }
+
+  /// Guarda la URL de la foto en el producto (si ya existe) y en el estado.
+  Future<void> _saveImageUrl(String url) async {
+    setState(() => _imageUrl = url);
+
+    if (isEditing && currentProductId != null) {
+      try {
+        await _supabase
+            .from('products')
+            .update({'image_url': url})
+            .eq('id', currentProductId!);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No se pudo guardar la foto en el producto: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  /// Abre el modal de punto de enfoque y guarda `#focus=x,y` en la URL.
+  Future<void> _adjustImageFocus(String imageUrl) async {
+    final baseUrl = stripImageFocus(imageUrl);
+
+    final alignment = await showDialog<Alignment>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ImageFocusDialog(
+        imageUrl: baseUrl,
+        title: _nameController.text.trim().isEmpty
+            ? 'Foto del producto'
+            : _nameController.text.trim(),
+        initialAlignment: parseImageFocus(_imageUrl ?? baseUrl),
+      ),
+    );
+
+    if (alignment == null || !mounted) return;
+
+    await _saveImageUrl(applyImageFocus(baseUrl, alignment));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enfoque de la foto guardado ✓')),
+      );
     }
   }
 
@@ -263,7 +325,38 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: _imageUrl != null && _imageUrl!.isNotEmpty
-                        ? Image.network(_imageUrl!, width: double.infinity, height: 170, fit: BoxFit.cover)
+                        ? GestureDetector(
+                            onTap: () => showProductImageViewer(
+                              context,
+                              imageUrl: _imageUrl!,
+                              title: _nameController.text.trim().isEmpty
+                                  ? 'Foto del producto'
+                                  : _nameController.text.trim(),
+                            ),
+                            child: Stack(
+                              children: [
+                                Image.network(
+                                  stripImageFocus(_imageUrl!),
+                                  width: double.infinity,
+                                  height: 170,
+                                  fit: BoxFit.cover,
+                                  alignment: parseImageFocus(_imageUrl),
+                                ),
+                                Positioned(
+                                  bottom: 6,
+                                  left: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black45,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.zoom_in, size: 16, color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
                         : Container(
                             width: double.infinity,
                             height: 170,
@@ -281,13 +374,36 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                   Positioned(
                     bottom: 8,
                     right: 8,
-                    child: FloatingActionButton.small(
-                      backgroundColor: Colors.deepOrange,
-                      foregroundColor: Colors.white,
-                      onPressed: _isUploading ? null : _pickAndUploadImage,
-                      child: _isUploading
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.camera_alt),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_imageUrl != null && _imageUrl!.isNotEmpty) ...[
+                          FloatingActionButton.extended(
+                            heroTag: 'btn_focus_image',
+                            backgroundColor: Colors.black54,
+                            foregroundColor: Colors.white,
+                            onPressed: _isUploading
+                                ? null
+                                : () => _adjustImageFocus(_imageUrl!),
+                            icon: const Icon(Icons.center_focus_strong, size: 18),
+                            label: const Text(
+                              'Ajustar enfoque',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        FloatingActionButton.small(
+                          heroTag: 'btn_pick_image',
+                          backgroundColor: Colors.deepOrange,
+                          foregroundColor: Colors.white,
+                          tooltip: 'Cambiar foto',
+                          onPressed: _isUploading ? null : _pickAndUploadImage,
+                          child: _isUploading
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.camera_alt),
+                        ),
+                      ],
                     ),
                   ),
                 ],
