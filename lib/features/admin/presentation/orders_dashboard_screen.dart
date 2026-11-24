@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/location_service.dart';
@@ -229,59 +229,11 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     );
   }
 
-  // Modal para ver los productos detallados que ordenÃ³ el cliente
+  // Modal para ver los productos detallados que ordenó el cliente
   Future<void> _showOrderDetailsModal(
     int orderId,
     Map<String, dynamic> order,
   ) async {
-    final deliveryType = (order['delivery_type'] ?? 'domicilio') as String;
-    final tableNumber = order['table_number']?.toString() ?? '';
-    final status = (order['status'] ?? 'pendiente') as String;
-    final paymentStatus = (order['payment_status'] ?? 'pendiente') as String;
-    final deliveryNotes = (order['delivery_notes'] ?? '').toString().trim();
-    final rawCustomerName = (order['customer_name'] ?? '').toString().trim();
-    final customerName =
-        rawCustomerName.isEmpty ? 'Cliente sin nombre' : rawCustomerName;
-    final hasDeliveryNotes =
-        deliveryNotes.isNotEmpty && deliveryNotes != 'Sin referencias';
-    final createdAt = order['created_at'] != null
-        ? DateTime.tryParse(order['created_at'].toString())
-        : null;
-
-    final modeLabel = deliveryType == 'local'
-        ? 'MESA #$tableNumber'
-        : deliveryType == 'para_llevar'
-            ? 'PARA LLEVAR'
-            : 'DOMICILIO';
-    final modeIcon = deliveryType == 'local'
-        ? Icons.table_restaurant
-        : deliveryType == 'para_llevar'
-            ? Icons.takeout_dining
-            : Icons.delivery_dining;
-
-    String? nextStatus;
-    String nextLabel = '';
-    IconData nextIcon = Icons.arrow_forward;
-    if (status == 'pendiente') {
-      nextStatus = 'en cocina';
-      nextLabel = 'Enviar a Cocina';
-      nextIcon = Icons.soup_kitchen;
-    } else if (status == 'en cocina') {
-      nextStatus = 'listo';
-      nextLabel = 'Marcar Listo';
-      nextIcon = Icons.check_circle_outline;
-    } else if (status == 'listo') {
-      if (deliveryType == 'domicilio') {
-        nextStatus = 'en camino';
-        nextLabel = 'Marcar En Camino';
-        nextIcon = Icons.two_wheeler;
-      } else {
-        nextStatus = 'entregado';
-        nextLabel = 'Marcar Entregado';
-        nextIcon = Icons.check_circle;
-      }
-    }
-
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -289,532 +241,12 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Color(0xFFFFFBF5),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 44,
-              height: 5,
-              margin: const EdgeInsets.only(top: 10, bottom: 6),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Orden #$orderId',
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.person,
-                                    size: 18,
-                                    color: Colors.deepOrange,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      customerName,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: [
-                                  _buildComandaBadge(
-                                    icon: modeIcon,
-                                    label: modeLabel,
-                                    background: Colors.deepOrange.shade50,
-                                    border: Colors.deepOrange.shade200,
-                                    foreground: Colors.deepOrange.shade900,
-                                  ),
-                                  if (createdAt != null)
-                                    _buildComandaBadge(
-                                      icon: Icons.schedule,
-                                      label: Formatters.dateTime(createdAt),
-                                      background: Colors.grey.shade100,
-                                      border: Colors.grey.shade300,
-                                      foreground: Colors.grey.shade800,
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ],
-                    ),
-                    if (hasDeliveryNotes) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.amber.shade400),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.sticky_note_2,
-                              size: 20,
-                              color: Colors.amber.shade900,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                deliveryNotes,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.amber.shade900,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: FutureBuilder<List<Map<String, dynamic>>>(
-                        future: _supabase
-                            .from('order_items')
-                            .select(
-                              'quantity, unit_price, notes, '
-                              'products(name, category)',
-                            )
-                            .eq('order_id', orderId),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text('Error: ${snapshot.error}'),
-                            );
-                          }
-
-                          final items = snapshot.data ?? [];
-
-                          if (items.isEmpty) {
-                            return const Center(
-                              child: Text(
-                                'No hay detalles registrados para esta orden.',
-                              ),
-                            );
-                          }
-
-                          return ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, i) =>
-                                _buildComandaItem(items[i]),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Total a cobrar',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          Formatters.currency(
-                            num.tryParse(order['total']?.toString() ?? '') ?? 0,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (nextStatus != null) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepOrange,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            if (nextStatus == 'entregado' &&
-                                paymentStatus != 'pagado') {
-                              await _showPaymentMethodSheet(orderId);
-                            } else {
-                              await _updateStatus(orderId, nextStatus!);
-                            }
-                          },
-                          icon: Icon(nextIcon),
-                          label: Text(
-                            nextLabel,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildComandaBadge({
-    required IconData icon,
-    required String label,
-    required Color background,
-    required Color border,
-    required Color foreground,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: foreground),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: foreground,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildComandaItem(Map<String, dynamic> item) {
-    final qty = (item['quantity'] as num?) ?? 1;
-    final unitPrice = (item['unit_price'] ?? 0.0).toDouble();
-    final subtotal = qty.toDouble() * unitPrice;
-    final rawNotes = (item['notes'] ?? '').toString().trim();
-    final prod = item['products'] as Map<String, dynamic>?;
-    final name = prod?['name']?.toString() ?? 'Producto';
-    final category = prod?['category']?.toString() ?? '';
-
-    final removed = <String>[];
-    final extras = <String>[];
-    final observations = <String>[];
-
-    if (rawNotes.isNotEmpty) {
-      for (final section in rawNotes.split(' | ')) {
-        final trimmed = section.trim();
-        if (trimmed.isEmpty) continue;
-
-        if (trimmed.startsWith('SIN: ')) {
-          removed.addAll(
-            trimmed
-                .replaceFirst('SIN: ', '')
-                .split(',')
-                .map((value) => value.trim())
-                .where((value) => value.isNotEmpty),
-          );
-        } else if (trimmed.startsWith('CON EXTRA: ')) {
-          extras.addAll(
-            trimmed
-                .replaceFirst('CON EXTRA: ', '')
-                .split(',')
-                .map((value) => value.trim())
-                .where((value) => value.isNotEmpty),
-          );
-        } else {
-          observations.add(trimmed);
-        }
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.deepOrange,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${qty}x',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (category.isNotEmpty)
-                      Text(
-                        category,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                Formatters.currency(subtotal),
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade800,
-                ),
-              ),
-            ],
-          ),
-          if (removed.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _buildComandaNotesSection(
-              title: 'SIN',
-              icon: Icons.remove_circle_outline,
-              items: removed,
-              background: Colors.red.shade50,
-              border: Colors.red.shade200,
-              foreground: Colors.red.shade800,
-            ),
-          ],
-          if (extras.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _buildComandaNotesSection(
-              title: 'CON / EXTRAS',
-              icon: Icons.add_circle_outline,
-              items: extras,
-              background: Colors.green.shade50,
-              border: Colors.green.shade200,
-              foreground: Colors.green.shade800,
-            ),
-          ],
-          if (observations.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.edit_note,
-                    size: 18,
-                    color: Colors.orange.shade900,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      observations.join(' | '),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange.shade900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildComandaNotesSection({
-    required String title,
-    required IconData icon,
-    required List<String> items,
-    required Color background,
-    required Color border,
-    required Color foreground,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: foreground),
-              const SizedBox(width: 6),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: foreground,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: items
-                .map(
-                  (label) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: border),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(icon, size: 13, color: foreground),
-                        const SizedBox(width: 4),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: foreground,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
+      builder: (_) => _OrderDetailsSheet(
+        orderId: orderId,
+        order: order,
+        supabase: _supabase,
+        onUpdateStatus: _updateStatus,
+        onChoosePaymentMethod: _showPaymentMethodSheet,
       ),
     );
   }
@@ -1215,6 +647,828 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// `true` si el platillo fue marcado como preparado dentro de sus notas.
+bool _isItemPrepared(String? notes) => (notes ?? '').startsWith('[LISTO]');
+
+/// Quita el prefijo `[LISTO]` de las notas para que el parser de
+/// `OPCIÓN:`, `SIN:` y `CON EXTRA:` siga funcionando igual que siempre.
+String _cleanItemNotes(String? notes) {
+  final raw = notes ?? '';
+  if (raw.startsWith('[LISTO] ')) return raw.substring('[LISTO] '.length);
+  if (raw.startsWith('[LISTO]')) return raw.substring('[LISTO]'.length);
+  return raw;
+}
+
+/// Alterna el prefijo `[LISTO]` conservando intactas las notas originales.
+String _toggleItemPreparedNotes(String? notes, bool prepared) {
+  final cleaned = _cleanItemNotes(notes).trim();
+  if (!prepared) return cleaned;
+  return cleaned.isEmpty ? '[LISTO]' : '[LISTO] $cleaned';
+}
+
+/// Modal de detalle de una orden con verificación platillo por platillo.
+class _OrderDetailsSheet extends StatefulWidget {
+  final int orderId;
+  final Map<String, dynamic> order;
+  final SupabaseClient supabase;
+  final Future<void> Function(int orderId, String newStatus) onUpdateStatus;
+  final Future<void> Function(int orderId) onChoosePaymentMethod;
+
+  const _OrderDetailsSheet({
+    required this.orderId,
+    required this.order,
+    required this.supabase,
+    required this.onUpdateStatus,
+    required this.onChoosePaymentMethod,
+  });
+
+  @override
+  State<_OrderDetailsSheet> createState() => _OrderDetailsSheetState();
+}
+
+class _OrderDetailsSheetState extends State<_OrderDetailsSheet> {
+  List<Map<String, dynamic>>? _items;
+  String? _itemsError;
+  final Set<int> _savingItemIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    try {
+      final res = await widget.supabase
+          .from('order_items')
+          .select('id, quantity, unit_price, notes, products(name, category)')
+          .eq('order_id', widget.orderId);
+
+      if (!mounted) return;
+      setState(() {
+        _items = List<Map<String, dynamic>>.from(res);
+        _itemsError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _itemsError = e.toString());
+    }
+  }
+
+  int get _totalCount => _items?.length ?? 0;
+
+  int get _preparedCount => (_items ?? [])
+      .where((item) => _isItemPrepared(item['notes']?.toString()))
+      .length;
+
+  Future<void> _toggleItemPrepared(int index) async {
+    final items = _items;
+    if (items == null || index < 0 || index >= items.length) return;
+
+    final item = items[index];
+    final itemId = item['id'] as int?;
+    if (itemId == null || _savingItemIds.contains(itemId)) return;
+
+    final previousNotes = item['notes']?.toString();
+    final willBePrepared = !_isItemPrepared(previousNotes);
+    final newNotes = _toggleItemPreparedNotes(previousNotes, willBePrepared);
+
+    // Actualización optimista para respuesta inmediata en cocina.
+    setState(() {
+      items[index] = {...item, 'notes': newNotes};
+      _savingItemIds.add(itemId);
+    });
+
+    try {
+      await widget.supabase
+          .from('order_items')
+          .update({'notes': newNotes})
+          .eq('id', itemId);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => items[index] = item);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo actualizar el platillo: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingItemIds.remove(itemId));
+    }
+  }
+
+  Widget _buildComandaBadge({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color border,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: foreground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemsList() {
+    if (_itemsError != null) {
+      return Center(child: Text('Error: $_itemsError'));
+    }
+
+    final items = _items;
+    if (items == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (items.isEmpty) {
+      return const Center(
+        child: Text('No hay detalles registrados para esta orden.'),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      itemCount: items.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, i) {
+        final itemId = items[i]['id'] as int?;
+        final isSaving = itemId != null && _savingItemIds.contains(itemId);
+        return _buildComandaItem(
+          items[i],
+          isSaving: isSaving,
+          onToggle: itemId == null || isSaving
+              ? null
+              : () => _toggleItemPrepared(i),
+        );
+      },
+    );
+  }
+
+  Widget _buildPreparedProgress() {
+    final total = _totalCount;
+    final prepared = _preparedCount;
+    final allDone = total > 0 && prepared == total;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: allDone ? Colors.green.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: allDone ? Colors.green.shade400 : Colors.orange.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                allDone ? Icons.check_circle : Icons.kitchen,
+                size: 18,
+                color: allDone ? Colors.green.shade700 : Colors.orange.shade800,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Preparados: $prepared de $total platillos',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color:
+                        allDone ? Colors.green.shade800 : Colors.orange.shade900,
+                  ),
+                ),
+              ),
+              if (allDone)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'TODO LISTO',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: total == 0 ? 0 : prepared / total,
+              minHeight: 8,
+              backgroundColor: Colors.white,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                allDone ? Colors.green : Colors.orange,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComandaItem(
+    Map<String, dynamic> item, {
+    required bool isSaving,
+    required VoidCallback? onToggle,
+  }) {
+    final qty = (item['quantity'] as num?) ?? 1;
+    final unitPrice = (item['unit_price'] ?? 0.0).toDouble();
+    final subtotal = qty.toDouble() * unitPrice;
+    final isPrepared = _isItemPrepared(item['notes']?.toString());
+    final rawNotes = _cleanItemNotes(item['notes']?.toString()).trim();
+    final prod = item['products'] as Map<String, dynamic>?;
+    final name = prod?['name']?.toString() ?? 'Producto';
+    final category = prod?['category']?.toString() ?? '';
+
+    final removed = <String>[];
+    final extras = <String>[];
+    final observations = <String>[];
+
+    if (rawNotes.isNotEmpty) {
+      for (final section in rawNotes.split(' | ')) {
+        final trimmed = section.trim();
+        if (trimmed.isEmpty) continue;
+
+        if (trimmed.startsWith('SIN: ')) {
+          removed.addAll(
+            trimmed
+                .replaceFirst('SIN: ', '')
+                .split(',')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty),
+          );
+        } else if (trimmed.startsWith('CON EXTRA: ')) {
+          extras.addAll(
+            trimmed
+                .replaceFirst('CON EXTRA: ', '')
+                .split(',')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty),
+          );
+        } else {
+          observations.add(trimmed);
+        }
+      }
+    }
+
+    final accentColor =
+        isPrepared ? Colors.green.shade700 : Colors.red.shade700;
+    final backgroundColor =
+        isPrepared ? Colors.green.shade50 : Colors.red.shade50;
+    final borderColor =
+        isPrepared ? Colors.green.shade500 : Colors.red.shade300;
+
+    return Material(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onToggle,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isPrepared
+                          ? Colors.green.shade600
+                          : Colors.deepOrange,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${qty}x',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isPrepared
+                                ? Colors.grey.shade600
+                                : Colors.black87,
+                            decoration: isPrepared
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
+                          ),
+                        ),
+                        if (category.isNotEmpty)
+                          Text(
+                            category,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              tooltip: isPrepared
+                                  ? 'Marcar como pendiente'
+                                  : 'Marcar como preparado',
+                              onPressed: onToggle,
+                              icon: isSaving
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: accentColor,
+                                      ),
+                                    )
+                                  : Icon(
+                                      isPrepared
+                                          ? Icons.check_circle
+                                          : Icons.radio_button_unchecked,
+                                      color: accentColor,
+                                      size: 24,
+                                    ),
+                            ),
+                            const SizedBox(width: 6),
+                            _buildComandaBadge(
+                              icon: isPrepared ? Icons.check : Icons.schedule,
+                              label: isPrepared ? 'LISTO' : 'PENDIENTE',
+                              background: isPrepared
+                                  ? Colors.green.shade100
+                                  : Colors.red.shade100,
+                              border: borderColor,
+                              foreground: accentColor,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    Formatters.currency(subtotal),
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ],
+              ),
+              if (removed.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildComandaNotesSection(
+                  title: 'SIN',
+                  icon: Icons.remove_circle_outline,
+                  items: removed,
+                  background: Colors.red.shade50,
+                  border: Colors.red.shade200,
+                  foreground: Colors.red.shade800,
+                ),
+              ],
+              if (extras.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _buildComandaNotesSection(
+                  title: 'CON / EXTRAS',
+                  icon: Icons.add_circle_outline,
+                  items: extras,
+                  background: Colors.green.shade50,
+                  border: Colors.green.shade200,
+                  foreground: Colors.green.shade800,
+                ),
+              ],
+              if (observations.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.edit_note,
+                        size: 18,
+                        color: Colors.orange.shade900,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          observations.join(' | '),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComandaNotesSection({
+    required String title,
+    required IconData icon,
+    required List<String> items,
+    required Color background,
+    required Color border,
+    required Color foreground,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: foreground),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: foreground,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: items
+                .map(
+                  (label) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 13, color: foreground),
+                        const SizedBox(width: 4),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: foreground,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final order = widget.order;
+    final orderId = widget.orderId;
+    final deliveryType = (order['delivery_type'] ?? 'domicilio') as String;
+    final tableNumber = order['table_number']?.toString() ?? '';
+    final status = (order['status'] ?? 'pendiente') as String;
+    final paymentStatus = (order['payment_status'] ?? 'pendiente') as String;
+    final deliveryNotes = (order['delivery_notes'] ?? '').toString().trim();
+    final rawCustomerName = (order['customer_name'] ?? '').toString().trim();
+    final customerName =
+        rawCustomerName.isEmpty ? 'Cliente sin nombre' : rawCustomerName;
+    final hasDeliveryNotes =
+        deliveryNotes.isNotEmpty && deliveryNotes != 'Sin referencias';
+    final createdAt = order['created_at'] != null
+        ? DateTime.tryParse(order['created_at'].toString())
+        : null;
+
+    final modeLabel = deliveryType == 'local'
+        ? 'MESA #$tableNumber'
+        : deliveryType == 'para_llevar'
+            ? 'PARA LLEVAR'
+            : 'DOMICILIO';
+    final modeIcon = deliveryType == 'local'
+        ? Icons.table_restaurant
+        : deliveryType == 'para_llevar'
+            ? Icons.takeout_dining
+            : Icons.delivery_dining;
+
+    String? nextStatus;
+    String nextLabel = '';
+    IconData nextIcon = Icons.arrow_forward;
+    if (status == 'pendiente') {
+      nextStatus = 'en cocina';
+      nextLabel = 'Enviar a Cocina';
+      nextIcon = Icons.soup_kitchen;
+    } else if (status == 'en cocina') {
+      nextStatus = 'listo';
+      nextLabel = 'Marcar Listo';
+      nextIcon = Icons.check_circle_outline;
+    } else if (status == 'listo') {
+      if (deliveryType == 'domicilio') {
+        nextStatus = 'en camino';
+        nextLabel = 'Marcar En Camino';
+        nextIcon = Icons.two_wheeler;
+      } else {
+        nextStatus = 'entregado';
+        nextLabel = 'Marcar Entregado';
+        nextIcon = Icons.check_circle;
+      }
+    }
+
+    final showProgress = _items != null && _items!.isNotEmpty;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFFBF5),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 44,
+            height: 5,
+            margin: const EdgeInsets.only(top: 10, bottom: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Orden #$orderId',
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.person,
+                                  size: 18,
+                                  color: Colors.deepOrange,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    customerName,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                _buildComandaBadge(
+                                  icon: modeIcon,
+                                  label: modeLabel,
+                                  background: Colors.deepOrange.shade50,
+                                  border: Colors.deepOrange.shade200,
+                                  foreground: Colors.deepOrange.shade900,
+                                ),
+                                if (createdAt != null)
+                                  _buildComandaBadge(
+                                    icon: Icons.schedule,
+                                    label: Formatters.dateTime(createdAt),
+                                    background: Colors.grey.shade100,
+                                    border: Colors.grey.shade300,
+                                    foreground: Colors.grey.shade800,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  if (hasDeliveryNotes) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade400),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.sticky_note_2,
+                            size: 20,
+                            color: Colors.amber.shade900,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              deliveryNotes,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  if (showProgress) ...[
+                    const SizedBox(height: 12),
+                    _buildPreparedProgress(),
+                    const SizedBox(height: 4),
+                  ],
+                  Expanded(child: _buildItemsList()),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, -3),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Total a cobrar',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        Formatters.currency(
+                          num.tryParse(order['total']?.toString() ?? '') ?? 0,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (nextStatus != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepOrange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          if (nextStatus == 'entregado' &&
+                              paymentStatus != 'pagado') {
+                            await widget.onChoosePaymentMethod(orderId);
+                          } else {
+                            await widget.onUpdateStatus(orderId, nextStatus!);
+                          }
+                        },
+                        icon: Icon(nextIcon),
+                        label: Text(
+                          nextLabel,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
