@@ -15,6 +15,6 @@ void main() {
     );
 
     expect(find.text('Mi Pedido'), findsOneWidget);
-    expect(find.text('Tu carrito está vacío.'), findsOneWidget);
+    expect(find.text('Tu carrito está vacío'), findsOneWidget);
   });
 }
