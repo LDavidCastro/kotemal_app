@@ -9,6 +9,22 @@ import '../presentation/cart_controller.dart';
 import '../../delivery/presentation/delivery_screen.dart';
 import '../../orders/presentation/order_tracking_screen.dart';
 
+class _DeliveryOption {
+  final String type;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final MaterialColor color;
+
+  const _DeliveryOption({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+}
+
 class CheckoutTypeScreen extends ConsumerStatefulWidget {
   const CheckoutTypeScreen({super.key});
 
@@ -17,13 +33,36 @@ class CheckoutTypeScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
-  // Opciones: 'local', 'para_llevar', 'domicilio'
   String _selectedDeliveryType = 'local';
   final _nameController = TextEditingController();
   final _tableController = TextEditingController();
   final _phoneController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isSending = false;
+
+  static const List<_DeliveryOption> _options = [
+    _DeliveryOption(
+      type: 'local',
+      title: 'Comer en el local',
+      subtitle: 'Disfruta tu comida en nuestras mesas',
+      icon: Icons.table_restaurant,
+      color: Colors.indigo,
+    ),
+    _DeliveryOption(
+      type: 'para_llevar',
+      title: 'Para llevar',
+      subtitle: 'Pasa a recoger tu orden en mostrador',
+      icon: Icons.takeout_dining,
+      color: Colors.teal,
+    ),
+    _DeliveryOption(
+      type: 'domicilio',
+      title: 'A domicilio',
+      subtitle: 'Te lo llevamos hasta tu dirección',
+      icon: Icons.two_wheeler,
+      color: Colors.deepOrange,
+    ),
+  ];
 
   @override
   void initState() {
@@ -77,9 +116,11 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
     if (cartItems.isEmpty) return;
 
-    if (_selectedDeliveryType == 'local' && _tableController.text.trim().isEmpty) {
+    if (_selectedDeliveryType == 'local' &&
+        _tableController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor indica tu número o nombre de mesa.')),
+        const SnackBar(
+            content: Text('Por favor indica tu número o nombre de mesa.')),
       );
       return;
     }
@@ -95,7 +136,8 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
     if (_phoneController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa tu número de teléfono de contacto.')),
+        const SnackBar(
+            content: Text('Ingresa tu número de teléfono de contacto.')),
       );
       return;
     }
@@ -107,14 +149,15 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       final currentUser = supabase.auth.currentUser;
       final deviceId = await DeviceIdService.getDeviceId();
 
-      // Inserción sin necesidad de GPS
       final orderResponse = await supabase.from('orders').insert({
         'customer_id': currentUser?.id,
         'customer_name': _nameController.text.trim(),
         'total': total,
         'status': 'pendiente',
         'delivery_type': _selectedDeliveryType,
-        'table_number': _selectedDeliveryType == 'local' ? _tableController.text.trim() : null,
+        'table_number': _selectedDeliveryType == 'local'
+            ? _tableController.text.trim()
+            : null,
         'delivery_notes': _notesController.text.trim(),
         'customer_phone': _phoneController.text.trim(),
         'guest_device_id': currentUser == null ? deviceId : null,
@@ -180,6 +223,24 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     }
   }
 
+  _DeliveryOption get _activeOption => _options.firstWhere(
+        (o) => o.type == _selectedDeliveryType,
+        orElse: () => _options.first,
+      );
+
+  String get _confirmButtonLabel {
+    switch (_selectedDeliveryType) {
+      case 'local':
+        return 'Confirmar Pedido en Mesa';
+      case 'para_llevar':
+        return 'Confirmar Pedido para Llevar';
+      case 'domicilio':
+        return 'Elegir Ubicación en Mapa';
+      default:
+        return 'Confirmar Pedido';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final subtotal = ref.watch(cartTotalProvider);
@@ -192,123 +253,81 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
         .clamp(0.0, double.infinity)
         .toDouble();
 
+    final activeColor = _activeOption.color;
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F7F9),
       appBar: AppBar(
-        title: const Text('¿Cómo deseas tu pedido?'),
-        backgroundColor: Colors.deepOrange,
-        foregroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: const Color(0xFFF7F7F9),
+        foregroundColor: Colors.black87,
+        title: const Text(
+          '¿Cómo deseas tu pedido?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Selecciona una modalidad:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              'Selecciona una modalidad',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
             ),
             const SizedBox(height: 16),
-
-            // Opción 1: Comer en el Local
-            _buildOptionCard(
-              type: 'local',
-              title: 'Comer en el Local',
-              subtitle: 'Estás en K\'OTEMAL y te lo llevamos a la mesa',
-              icon: Icons.table_restaurant,
-            ),
-            const SizedBox(height: 12),
-
-            // Opción 2: Para Llevar / Recoger
-            _buildOptionCard(
-              type: 'para_llevar',
-              title: 'Para Llevar (Pick-up)',
-              subtitle: 'Pasa a recogerlo directamente al mostrador',
-              icon: Icons.takeout_dining,
-            ),
-            const SizedBox(height: 12),
-
-            // Opción 3: A Domicilio
-            _buildOptionCard(
-              type: 'domicilio',
-              title: 'A Domicilio (Delivery)',
-              subtitle: 'Te lo enviamos con un repartidor a tu ubicación',
-              icon: Icons.delivery_dining,
-            ),
+            ..._options.map((option) => _buildOptionCard(option)),
+            const SizedBox(height: 28),
+            _buildForm(activeColor),
             const SizedBox(height: 24),
-
-            // Formulario según la opción seleccionada
-            TextField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de quien recibe / ordena *',
-                hintText: 'Ej. Juan Pérez',
-                prefixIcon: Icon(Icons.person_outline),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            if (_selectedDeliveryType == 'local') ...[
-              TextField(
-                controller: _tableController,
-                decoration: const InputDecoration(
-                  labelText: 'Número o Nombre de Mesa *',
-                  hintText: 'Ej. Mesa 3 / Barra',
-                  prefixIcon: Icon(Icons.pin),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            if (_selectedDeliveryType != 'domicilio') ...[
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Teléfono de contacto *',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _notesController,
-                decoration: const InputDecoration(
-                  labelText: 'Instrucciones adicionales (opcional)',
-                  hintText: 'Ej. Servir sin hielo, cubiertos extra',
-                  prefixIcon: Icon(Icons.note_alt_outlined),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 24),
+            if (_selectedDeliveryType != 'domicilio')
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
+                    backgroundColor: activeColor,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
                   ),
                   onPressed: _isSending ? null : _submitOnSiteOrder,
                   child: _isSending
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
                       : Text(
-                          'Confirmar Pedido (Q${total.toStringAsFixed(2)})',
-                          style: const TextStyle(fontSize: 16),
+                          '$_confirmButtonLabel (Q${total.toStringAsFixed(2)})',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                 ),
-              ),
-            ] else ...[
-              // Si elige Domicilio, se muestra el botón para abrir el mapa
+              )
+            else
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 52,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
+                    backgroundColor: activeColor,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
                   ),
                   onPressed: () {
                     Navigator.push(
@@ -321,54 +340,200 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                     );
                   },
                   icon: const Icon(Icons.map_outlined),
-                  label: const Text(
-                    'Continuar a fijar Ubicación GPS',
-                    style: TextStyle(fontSize: 16),
+                  label: Text(
+                    _confirmButtonLabel,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOptionCard({
-    required String type,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    final isSelected = _selectedDeliveryType == type;
+  Widget _buildOptionCard(_DeliveryOption option) {
+    final isSelected = _selectedDeliveryType == option.type;
+    final baseColor = option.color;
 
-    return Card(
-      elevation: isSelected ? 3 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isSelected ? Colors.deepOrange : Colors.grey.shade300,
-          width: isSelected ? 2 : 1,
+    return GestureDetector(
+      onTap: () => setState(() => _selectedDeliveryType = option.type),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? baseColor.shade50 : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? baseColor : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: isSelected ? baseColor.shade100 : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                option.icon,
+                color: isSelected ? baseColor.shade700 : Colors.grey.shade600,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    option.title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? baseColor.shade900 : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    option.subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isSelected ? baseColor : Colors.transparent,
+                border: Border.all(
+                  color: isSelected ? baseColor : Colors.grey.shade400,
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : null,
+            ),
+          ],
         ),
       ),
-      child: ListTile(
-        onTap: () => setState(() => _selectedDeliveryType = type),
-        leading: CircleAvatar(
-          backgroundColor: isSelected ? Colors.deepOrange.shade100 : Colors.grey.shade100,
-          foregroundColor: isSelected ? Colors.deepOrange : Colors.black87,
-          child: Icon(icon),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    );
+  }
+
+  Widget _buildForm(Color activeColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Nombre de quien recibe / ordena *',
+              hintText: 'Ej. Juan Pérez',
+              prefixIcon: const Icon(Icons.person_outline),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: activeColor, width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
-        ),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: Icon(
-          isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-          color: isSelected ? Colors.deepOrange : Colors.grey,
-        ),
+          const SizedBox(height: 14),
+          if (_selectedDeliveryType == 'local') ...[
+            TextField(
+              controller: _tableController,
+              decoration: InputDecoration(
+                labelText: 'Número o Nombre de Mesa *',
+                hintText: 'Ej. Mesa 3 / Barra',
+                prefixIcon: const Icon(Icons.pin),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: activeColor, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: 'Teléfono de contacto *',
+              prefixIcon: const Icon(Icons.phone),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: activeColor, width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _notesController,
+            decoration: InputDecoration(
+              labelText: 'Instrucciones adicionales (opcional)',
+              hintText: 'Ej. Servir sin hielo, cubiertos extra',
+              prefixIcon: const Icon(Icons.note_alt_outlined),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: activeColor, width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
