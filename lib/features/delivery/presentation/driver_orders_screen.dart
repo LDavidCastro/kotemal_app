@@ -9,10 +9,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/order_alert_service.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/alert_settings_sheet.dart';
 
 class DriverOrdersScreen extends StatefulWidget {
-  const DriverOrdersScreen({super.key});
+  const DriverOrdersScreen({super.key, this.isAdmin = false});
+
+  final bool isAdmin;
 
   @override
   State<DriverOrdersScreen> createState() => _DriverOrdersScreenState();
@@ -24,11 +27,44 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   static StreamSubscription<Position>? _positionStream;
   static Set<int> _activeOrderIds = <int>{};
   bool _isStarting = false;
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
     OrderAlertService.instance.init();
+    _isAdmin = widget.isAdmin;
+    _loadAdminRole();
+  }
+
+  Future<void> _loadAdminRole() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      final res = await _supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (mounted) {
+        setState(() {
+          _isAdmin = widget.isAdmin || (res?['role'] == 'admin');
+        });
+      }
+    } catch (e) {
+      debugPrint('Error consultando rol: $e');
+    }
+  }
+
+  bool _isToday(Map<String, dynamic> order) {
+    final raw = order['updated_at'] ?? order['created_at'];
+    if (raw == null) return false;
+    final parsed = DateTime.tryParse(raw.toString())?.toLocal();
+    if (parsed == null) return false;
+    final now = DateTime.now();
+    return parsed.year == now.year &&
+        parsed.month == now.month &&
+        parsed.day == now.day;
   }
 
   void _snack(String msg) {
@@ -489,7 +525,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     final currentDriverId = _supabase.auth.currentUser?.id;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Rutas y Entregas'),
@@ -521,7 +557,8 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
             indicatorColor: Colors.white,
             tabs: [
               Tab(icon: Icon(Icons.delivery_dining), text: 'Por Entregar'),
-              Tab(icon: Icon(Icons.check_circle_outline), text: 'Entregados'),
+              Tab(icon: Icon(Icons.today), text: 'Entregados Hoy'),
+              Tab(icon: Icon(Icons.history), text: 'Historial'),
             ],
           ),
         ),
@@ -561,28 +598,62 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               }
             }
 
-            // Pestaña 1: Por entregar (todos los pedidos a domicilio activos,
-            // estén libres o ya asignados a un repartidor).
-            final pendingOrders = allOrders.where((o) {
-              final st = o['status'];
-              final type = o['delivery_type'] ?? 'domicilio';
-              return type == 'domicilio' &&
-                  (st == 'en cocina' ||
-                      st == 'listo' ||
-                      st == 'en camino' ||
-                      st == 'pendiente');
+            final domicilioOrders = allOrders.where((o) {
+              return (o['delivery_type'] ?? 'domicilio') == 'domicilio';
             }).toList();
 
-            // Pestaña 2: Entregados (solo a domicilio completados)
-            final deliveredOrders = allOrders.where((o) {
-              final type = o['delivery_type'] ?? 'domicilio';
-              return type == 'domicilio' && o['status'] == 'entregado';
+            final activeStatuses = {'pendiente', 'en cocina', 'en camino'};
+            final pendingOrders = domicilioOrders.where((o) {
+              final st = o['status'];
+              final assignedId = o['delivery_driver_id'];
+              if (!activeStatuses.contains(st)) return false;
+              if (_isAdmin) return true;
+              return assignedId == null || assignedId == currentDriverId;
+            }).toList()
+              ..sort((a, b) {
+                final aActive = a['status'] == 'en camino' ||
+                    a['delivery_driver_id'] != null;
+                final bActive = b['status'] == 'en camino' ||
+                    b['delivery_driver_id'] != null;
+                if (aActive && !bActive) return -1;
+                if (!aActive && bActive) return 1;
+                return (b['id'] as int).compareTo(a['id'] as int);
+              });
+
+            final todayDelivered = domicilioOrders.where((o) {
+              return o['status'] == 'entregado' && _isToday(o);
+            }).where((o) {
+              if (_isAdmin) return true;
+              return o['delivery_driver_id'] == currentDriverId;
+            }).toList();
+
+            final historyOrders = domicilioOrders.where((o) {
+              return o['status'] == 'entregado';
+            }).where((o) {
+              if (_isAdmin) return true;
+              return o['delivery_driver_id'] == currentDriverId;
             }).toList();
 
             return TabBarView(
               children: [
-                _buildOrderList(pendingOrders, currentDriverId, isDeliveredView: false),
-                _buildOrderList(deliveredOrders, currentDriverId, isDeliveredView: true),
+                _buildOrderList(
+                  pendingOrders,
+                  currentDriverId,
+                  isDeliveredView: false,
+                  showSectionHeaders: true,
+                ),
+                _buildOrderList(
+                  todayDelivered,
+                  currentDriverId,
+                  isDeliveredView: true,
+                  showDeliveryDate: true,
+                ),
+                _buildOrderList(
+                  historyOrders,
+                  currentDriverId,
+                  isDeliveredView: true,
+                  showDeliveryDate: true,
+                ),
               ],
             );
           },
@@ -595,12 +666,14 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     List<Map<String, dynamic>> orders,
     String? currentDriverId, {
     required bool isDeliveredView,
+    bool showSectionHeaders = false,
+    bool showDeliveryDate = false,
   }) {
     if (orders.isEmpty) {
       return Center(
         child: Text(
           isDeliveredView
-              ? 'No hay pedidos entregados aún.'
+              ? 'No hay pedidos entregados.'
               : 'No hay pedidos pendientes de entrega.',
           style: const TextStyle(color: Colors.grey, fontSize: 16),
         ),
@@ -614,223 +687,277 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       return assigned && lat != null && lng != null;
     }).toList();
 
-    final list = ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: orders.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final ord = orders[index];
-        final orderId = ord['id'] as int;
-        final status = ord['status'] as String;
-        final phone = ord['customer_phone'] ?? 'Sin número';
-        final rawCustomerName = (ord['customer_name'] ?? '').toString().trim();
-        final customerName =
-            rawCustomerName.isEmpty ? 'Sin nombre' : rawCustomerName;
-        final notes = ord['delivery_notes'] ?? 'Sin referencias';
-        final total = ord['total']?.toString() ?? '0.0';
-        final lat = ord['delivery_latitude'] as double?;
-        final lng = ord['delivery_longitude'] as double?;
-        final assignedId = ord['delivery_driver_id'];
-        final hasDriver = assignedId != null;
-        final isMyOrder = hasDriver && assignedId == currentDriverId;
-        final isOtherDriver = hasDriver && !isMyOrder;
-        final paymentStatus = (ord['payment_status'] ?? 'pendiente') as String;
-        final paymentMethod = ord['payment_method'] as String?;
-        final isPaid = paymentStatus == 'pagado';
-        final paymentLabel = paymentMethod == 'efectivo'
-            ? 'Pagado (Efectivo)'
-            : paymentMethod == 'transferencia'
-                ? 'Pagado (Transferencia)'
-                : 'Pagado';
+    Widget itemBuilder(BuildContext context, int index) {
+      final ord = orders[index];
+      final orderId = ord['id'] as int;
+      final status = ord['status'] as String;
+      final phone = ord['customer_phone'] ?? 'Sin número';
+      final rawCustomerName = (ord['customer_name'] ?? '').toString().trim();
+      final customerName =
+          rawCustomerName.isEmpty ? 'Sin nombre' : rawCustomerName;
+      final notes = ord['delivery_notes'] ?? 'Sin referencias';
+      final total = ord['total']?.toString() ?? '0.0';
+      final lat = ord['delivery_latitude'] as double?;
+      final lng = ord['delivery_longitude'] as double?;
+      final assignedId = ord['delivery_driver_id'];
+      final hasDriver = assignedId != null;
+      final isMyOrder = hasDriver && assignedId == currentDriverId;
+      final isOtherDriver = hasDriver && !isMyOrder;
+      final paymentStatus = (ord['payment_status'] ?? 'pendiente') as String;
+      final paymentMethod = ord['payment_method'] as String?;
+      final isPaid = paymentStatus == 'pagado';
+      final paymentLabel = paymentMethod == 'efectivo'
+          ? 'Pagado (Efectivo)'
+          : paymentMethod == 'transferencia'
+              ? 'Pagado (Transferencia)'
+              : 'Pagado';
 
-        return Card(
-          elevation: 3,
-          color: isDeliveredView
-              ? null
-              : hasDriver
-                  ? Colors.green.shade50.withValues(alpha: 0.35)
-                  : Colors.red.shade50.withValues(alpha: 0.35),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: isDeliveredView
-                ? BorderSide.none
-                : BorderSide(
-                    color: hasDriver
-                        ? Colors.green.shade500
-                        : Colors.red.shade400,
-                    width: 2,
-                  ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => _showContactOptions(phone, customerName),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          'Orden #$orderId',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Chip(
-                      label: Text(
-                        status == 'listo'
-                            ? 'LISTO PARA RECOGER'
-                            : status.toUpperCase(),
-                        style: const TextStyle(fontSize: 11, color: Colors.white),
-                      ),
-                      backgroundColor: status == 'listo'
-                          ? Colors.teal
-                          : isDeliveredView
-                              ? Colors.green
-                              : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
-                    ),
-                  ],
+      String? deliveredAtLabel;
+      if (showDeliveryDate) {
+        final raw = ord['updated_at'] ?? ord['created_at'];
+        final parsed = DateTime.tryParse(raw.toString())?.toLocal();
+        if (parsed != null) {
+          deliveredAtLabel = Formatters.dateTime(parsed);
+        }
+      }
+
+      return Card(
+        elevation: 3,
+        color: isDeliveredView
+            ? null
+            : hasDriver
+                ? Colors.green.shade50.withValues(alpha: 0.35)
+                : Colors.red.shade50.withValues(alpha: 0.35),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: isDeliveredView
+              ? BorderSide.none
+              : BorderSide(
+                  color: hasDriver
+                      ? Colors.green.shade500
+                      : Colors.red.shade400,
+                  width: 2,
                 ),
-                if (!isDeliveredView) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _showContactOptions(phone, customerName),
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
+                        horizontal: 4,
+                        vertical: 2,
                       ),
-                      decoration: BoxDecoration(
-                        color: hasDriver
-                            ? Colors.green.shade600
-                            : Colors.red.shade600,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            hasDriver
-                                ? Icons.check_circle
-                                : Icons.person_off,
-                            size: 14,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            hasDriver
-                                ? (isMyOrder
-                                    ? 'TU PEDIDO'
-                                    : 'CON REPARTIDOR')
-                                : 'SIN REPARTIDOR',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Orden #$orderId',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                  ),
+                  Chip(
+                    label: Text(
+                      status == 'listo'
+                          ? 'LISTO PARA RECOGER'
+                          : status.toUpperCase(),
+                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                    ),
+                    backgroundColor: status == 'listo'
+                        ? Colors.teal
+                        : isDeliveredView
+                            ? Colors.green
+                            : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
                   ),
                 ],
-                const SizedBox(height: 6),
-                Text('Cliente: $customerName',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                InkWell(
-                  onTap: () => _showContactOptions(phone, customerName),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+              if (!isDeliveredView) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: hasDriver
+                          ? Colors.green.shade600
+                          : Colors.red.shade600,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.phone_in_talk,
-                          size: 16,
-                          color: Colors.blue,
+                        Icon(
+                          hasDriver
+                              ? Icons.check_circle
+                              : Icons.person_off,
+                          size: 14,
+                          color: Colors.white,
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 5),
                         Text(
-                          'Teléfono: $phone',
+                          hasDriver
+                              ? (isMyOrder
+                                  ? 'SELECCIONADO / EN CAMINO'
+                                  : 'Asignado a repartidor')
+                              : 'DISPONIBLE',
                           style: const TextStyle(
-                            color: Colors.blue,
-                            decoration: TextDecoration.underline,
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.chat, size: 16, color: Colors.green),
                       ],
                     ),
                   ),
                 ),
-                Text('Referencia: $notes'),
-                Text('Total: Q$total',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+              ],
+              if (deliveredAtLabel != null) ...[
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: (isPaid ? Colors.green : Colors.orange).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: isPaid ? Colors.green : Colors.orange),
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.access_time,
+                        size: 14, color: Colors.grey.shade700),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Entregado: $deliveredAtLabel',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 6),
+              Text('Cliente: $customerName',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              InkWell(
+                onTap: () => _showContactOptions(phone, customerName),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        isPaid ? Icons.verified : Icons.payments_outlined,
-                        size: 15,
-                        color: isPaid ? Colors.green : Colors.orange,
+                      const Icon(
+                        Icons.phone_in_talk,
+                        size: 16,
+                        color: Colors.blue,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        isPaid ? paymentLabel : 'Pago pendiente',
-                        style: TextStyle(
-                          fontSize: 12,
+                        'Teléfono: $phone',
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
                           fontWeight: FontWeight.bold,
-                          color: isPaid ? Colors.green.shade800 : Colors.orange.shade900,
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.chat, size: 16, color: Colors.green),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                if (!isDeliveredView) ...[
-                  Row(
-                    children: [
-                      if (lat != null && lng != null)
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey.shade800,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () => _openMaps(lat, lng),
-                          icon: const Icon(Icons.directions, size: 16),
-                          label: const Text('Maps'),
+              ),
+              Text('Referencia: $notes'),
+              Text('Total: Q$total',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (isPaid ? Colors.green : Colors.orange).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: isPaid ? Colors.green : Colors.orange),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isPaid ? Icons.verified : Icons.payments_outlined,
+                      size: 15,
+                      color: isPaid ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isPaid ? paymentLabel : 'Pago pendiente',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isPaid ? Colors.green.shade800 : Colors.orange.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (!isDeliveredView) ...[
+                Row(
+                  children: [
+                    if (lat != null && lng != null)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey.shade800,
+                          foregroundColor: Colors.white,
                         ),
-                      const Spacer(),
-                      if (!hasDriver)
+                        onPressed: () => _openMaps(lat, lng),
+                        icon: const Icon(Icons.directions, size: 16),
+                        label: const Text('Maps'),
+                      ),
+                    const Spacer(),
+                    if (!hasDriver)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade600,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => _claimOrder(orderId),
+                        icon: const Icon(Icons.pan_tool_alt),
+                        label: const Text('Tomar Pedido'),
+                      )
+                    else if (isMyOrder) ...[
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        onPressed: () => _releaseOrder(orderId),
+                        child: const Text('Soltar'),
+                      ),
+                      const SizedBox(width: 8),
+                      if (status != 'en camino')
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red.shade600,
+                            backgroundColor: Colors.blue.shade700,
                             foregroundColor: Colors.white,
                           ),
-                          onPressed: () => _claimOrder(orderId),
-                          icon: const Icon(Icons.pan_tool_alt),
-                          label: const Text('Tomar Pedido'),
+                          onPressed: () => _startDelivery(orderId),
+                          icon: const Icon(Icons.two_wheeler),
+                          label: const Text('Iniciar Entrega'),
                         )
-                      else if (isMyOrder) ...[
+                      else
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () =>
+                              _confirmCompleteDelivery(orderId),
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text('Entregado'),
+                        ),
+                    ] else if (isOtherDriver) ...[
+                      if (_isAdmin) ...[
                         OutlinedButton(
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
@@ -839,28 +966,16 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           child: const Text('Soltar'),
                         ),
                         const SizedBox(width: 8),
-                        if (status != 'en camino')
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade700,
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () => _startDelivery(orderId),
-                            icon: const Icon(Icons.two_wheeler),
-                            label: const Text('Iniciar Entrega'),
-                          )
-                        else
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green.shade700,
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () =>
-                                _confirmCompleteDelivery(orderId),
-                            icon: const Icon(Icons.check_circle),
-                            label: const Text('Entregado'),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade700,
+                            foregroundColor: Colors.white,
                           ),
-                      ] else if (isOtherDriver)
+                          onPressed: () => _confirmCompleteDelivery(orderId),
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text('Entregado'),
+                        ),
+                      ] else
                         const Text(
                           'Asignado a otro repartidor',
                           style: TextStyle(
@@ -869,36 +984,113 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           ),
                         ),
                     ],
-                  ),
-                  if (_activeOrderIds.contains(orderId))
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.satellite_alt, size: 16, color: Colors.green),
-                          SizedBox(width: 6),
-                          Text('Compartiendo ubicación con el cliente...',
-                              style: TextStyle(fontSize: 12, color: Colors.green)),
-                        ],
-                      ),
-                    ),
-                ],
-                if (isDeliveredView)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: Colors.orange.shade800),
-                      onPressed: () => _revertToOnTheWay(orderId),
-                      icon: const Icon(Icons.undo, size: 18),
-                      label: const Text('¿Entregado por error? Reactivar'),
+                  ],
+                ),
+                if (_activeOrderIds.contains(orderId))
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.satellite_alt, size: 16, color: Colors.green),
+                        SizedBox(width: 6),
+                        Text('Compartiendo ubicación con el cliente...',
+                            style: TextStyle(fontSize: 12, color: Colors.green)),
+                      ],
                     ),
                   ),
+              ],
+              if (isDeliveredView)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: Colors.orange.shade800),
+                    onPressed: () => _revertToOnTheWay(orderId),
+                    icon: const Icon(Icons.undo, size: 18),
+                    label: const Text('¿Entregado por error? Reactivar'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final listChildren = <Widget>[];
+    if (showSectionHeaders && orders.isNotEmpty) {
+      final selected = orders.where((o) {
+        return o['status'] == 'en camino' || o['delivery_driver_id'] != null;
+      }).toList();
+      final available = orders.where((o) {
+        return o['status'] != 'en camino' && o['delivery_driver_id'] == null;
+      }).toList();
+
+      if (selected.isNotEmpty) {
+        listChildren.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.local_shipping, color: Colors.blue.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'SELECCIONADO / EN CAMINO',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade800,
+                  ),
+                ),
               ],
             ),
           ),
         );
-      },
-    );
+        for (final order in selected) {
+          final index = orders.indexOf(order);
+          listChildren.add(itemBuilder(context, index));
+        }
+      }
+
+      if (available.isNotEmpty) {
+        if (selected.isNotEmpty) {
+          listChildren.add(const SizedBox(height: 20));
+        }
+        listChildren.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.inventory_2, color: Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'DISPONIBLES',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        for (final order in available) {
+          final index = orders.indexOf(order);
+          listChildren.add(itemBuilder(context, index));
+        }
+      }
+    }
+
+    final list = showSectionHeaders
+        ? ListView(
+            padding: const EdgeInsets.all(16),
+            children: listChildren,
+          )
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: orders.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: itemBuilder,
+          );
 
     if (isDeliveredView || myAssignedWithGps.isEmpty) {
       return list;

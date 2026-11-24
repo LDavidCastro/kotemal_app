@@ -388,7 +388,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const DriverOrdersScreen(),
+                      builder: (_) => DriverOrdersScreen(isAdmin: isAdmin),
                     ),
                   );
                 },
