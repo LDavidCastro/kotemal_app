@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SavedAccount {
   final String email;
-  final String password;
+  String password;
   final String label; // Ej. "Administrador", "Repartidor", "Cliente"
 
   SavedAccount({
@@ -46,6 +46,22 @@ class AccountManagerService {
     // Evitar duplicados por correo
     accounts.removeWhere((a) => a.email.toLowerCase() == account.email.toLowerCase());
     accounts.insert(0, account);
+
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(accounts.map((a) => a.toJson()).toList());
+    await prefs.setString(_key, encoded);
+  }
+
+  static Future<void> updatePassword(String email, String newPassword) async {
+    final accounts = await getSavedAccounts();
+    var updated = false;
+    for (final account in accounts) {
+      if (account.email.toLowerCase() == email.toLowerCase()) {
+        account.password = newPassword;
+        updated = true;
+      }
+    }
+    if (!updated) return;
 
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(accounts.map((a) => a.toJson()).toList());

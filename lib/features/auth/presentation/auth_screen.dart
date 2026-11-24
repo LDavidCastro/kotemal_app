@@ -140,6 +140,33 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _openForgotPasswordDialog() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _ForgotPasswordDialog(
+        initialEmail: _emailController.text.trim(),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _emailController.text = result['email'] ?? '';
+      _passwordController.text = result['password'] ?? '';
+      _isLogin = true;
+    });
+    await _loadSavedAccounts();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Contraseña actualizada correctamente.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -261,6 +288,16 @@ class _AuthScreenState extends State<AuthScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
+            if (_isLogin) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _openForgotPasswordDialog,
+                  child: const Text('¿Olvidaste tu contraseña?'),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
@@ -304,6 +341,215 @@ class _AuthScreenState extends State<AuthScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ForgotPasswordDialog extends StatefulWidget {
+  const _ForgotPasswordDialog({required this.initialEmail});
+
+  final String initialEmail;
+
+  @override
+  State<_ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
+  late final TextEditingController _emailController;
+  final _codeController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  int _step = 1;
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+  String? _error;
+  String _sentEmail = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _codeController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendCode() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Ingresa tu correo electrónico.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      if (!mounted) return;
+      setState(() {
+        _sentEmail = email;
+        _step = 2;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final code = _codeController.text.trim();
+    final newPassword = _passwordController.text;
+
+    if (code.length != 6) {
+      setState(() => _error = 'El código debe tener 6 dígitos.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setState(() => _error = 'La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await Supabase.instance.client.auth.verifyOTP(
+        email: _sentEmail,
+        token: code,
+        type: OtpType.recovery,
+      );
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+      await AccountManagerService.updatePassword(_sentEmail, newPassword);
+
+      if (!mounted) return;
+      Navigator.pop(context, {
+        'email': _sentEmail,
+        'password': newPassword,
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        _step == 1 ? 'Recuperar contraseña' : 'Código de verificación',
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_step == 1) ...[
+              const Text(
+                'Ingresa tu correo y te enviaremos un código de 6 dígitos.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Correo electrónico',
+                  prefixIcon: Icon(Icons.email),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ] else ...[
+              Text('Enviamos un código de 6 dígitos a $_sentEmail.'),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _isLoading ? null : _sendCode,
+                  child: const Text('Reenviar código'),
+                ),
+              ),
+              TextField(
+                controller: _codeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Código de 6 dígitos',
+                  prefixIcon: Icon(Icons.pin),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _passwordController,
+                obscureText: _obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'Nueva contraseña',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      color: Colors.grey.shade600,
+                    ),
+                    onPressed: () => setState(
+                      () => _obscurePassword = !_obscurePassword,
+                    ),
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        if (_step == 1)
+          ElevatedButton(
+            onPressed: _isLoading ? null : _sendCode,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Enviar código de 6 dígitos'),
+          )
+        else
+          ElevatedButton(
+            onPressed: _isLoading ? null : _resetPassword,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Restablecer contraseña'),
+          ),
+      ],
     );
   }
 }
