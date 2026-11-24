@@ -572,22 +572,35 @@ class _ProductList extends ConsumerWidget {
 
     if (canCustomize) {
       final CustomizedProductResult? result =
-          await showDialog<CustomizedProductResult>(
+          await showModalBottomSheet<CustomizedProductResult>(
         context: context,
-        builder: (_) => ProductCustomizationDialog(product: item),
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => FractionallySizedBox(
+          heightFactor: 0.88,
+          child: ClipRRect(
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+            child: ProductCustomizationDialog(product: item),
+          ),
+        ),
       );
 
       if (result != null) {
-        ref.read(cartProvider.notifier).addProduct(
-              item,
-              notes: result.notes,
-              customPrice: result.finalPrice,
-            );
+        final cartNotifier = ref.read(cartProvider.notifier);
+        for (var i = 0; i < result.quantity; i++) {
+          cartNotifier.addProduct(
+            item,
+            notes: result.notes,
+            customPrice: result.finalPrice,
+          );
+        }
         if (context.mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${item.name} agregado al carrito.'),
+              content: Text(
+                  '${result.quantity}x ${item.name} agregado al carrito.'),
               duration: const Duration(seconds: 1),
             ),
           );

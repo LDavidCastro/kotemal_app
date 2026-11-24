@@ -17,11 +17,22 @@ class CartScreen extends ConsumerWidget {
     int index,
     CartItem item,
   ) async {
-    final CustomizedProductResult? result = await showDialog<CustomizedProductResult>(
+    final CustomizedProductResult? result =
+        await showModalBottomSheet<CustomizedProductResult>(
       context: context,
-      builder: (_) => ProductCustomizationDialog(
-        product: item.product,
-        initialNotes: item.notes,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.88,
+        child: ClipRRect(
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
+          child: ProductCustomizationDialog(
+            product: item.product,
+            initialNotes: item.notes,
+            initialQuantity: item.quantity,
+          ),
+        ),
       ),
     );
 
