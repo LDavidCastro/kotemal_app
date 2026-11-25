@@ -214,7 +214,7 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
       final id = order['id'];
       if (id is! int) continue;
 
-      final status = (order['status'] ?? '').toString();
+      final status = (order['status'] ?? '').toString().trim().toLowerCase();
       final previousStatus = _lastOrderStatuses[id];
       final isNew = !_knownOrderIds.contains(id);
       final isDelivery =
@@ -243,8 +243,11 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
           _alertCounter++;
         }
 
+        final previousStatusLower =
+            (previousStatus ?? '').toString().trim().toLowerCase();
+
         if (isDelivery &&
-            previousStatus != 'listo' &&
+            previousStatusLower != 'listo' &&
             status == 'listo' &&
             (driverId == null || driverId == _currentUserId)) {
           OrderAlertService.instance.announceCustom(

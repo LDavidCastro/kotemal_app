@@ -71,7 +71,10 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     try {
       await _supabase
           .from('orders')
-          .update({'status': newStatus})
+          .update({
+            'status': newStatus,
+            // Nunca tocar delivery_driver_id ni delivery_type al cambiar estado.
+          })
           .eq('id', orderId);
 
       if (!mounted) return;

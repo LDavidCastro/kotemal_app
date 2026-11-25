@@ -29,6 +29,8 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
   bool _isStarting = false;
   bool _isAdmin = false;
 
+  final Map<int, String> _lastKnownStatuses = <int, String>{};
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +55,45 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       }
     } catch (e) {
       debugPrint('Error consultando rol: $e');
+    }
+  }
+
+  void _detectReadyForPickupAlerts(
+    List<Map<String, dynamic>> orders,
+    String? currentDriverId,
+  ) {
+    if (_isAdmin) return;
+
+    for (final order in orders) {
+      final id = order['id'];
+      if (id is! int) continue;
+
+      final statusRaw = (order['status'] ?? '').toString().trim().toLowerCase();
+      final previousRaw =
+          (_lastKnownStatuses[id] ?? '').toString().trim().toLowerCase();
+      final driverId = order['delivery_driver_id'];
+      final isMineOrUnassigned =
+          driverId == null || driverId == currentDriverId;
+
+      if (previousRaw.isNotEmpty &&
+          previousRaw != 'listo' &&
+          statusRaw == 'listo' &&
+          isMineOrUnassigned) {
+        final rawName = (order['customer_name'] ?? '').toString().trim();
+        final customerName = rawName.isEmpty ? 'cliente sin nombre' : rawName;
+        OrderAlertService.instance.announceCustom(
+          message:
+              '¡Orden número $id de $customerName está lista para recoger!',
+        );
+      }
+    }
+
+    _lastKnownStatuses.clear();
+    for (final order in orders) {
+      final id = order['id'];
+      if (id is int) {
+        _lastKnownStatuses[id] = (order['status'] ?? '').toString();
+      }
     }
   }
 
@@ -602,7 +643,12 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               return (o['delivery_type'] ?? 'domicilio') == 'domicilio';
             }).toList();
 
-            final activeStatuses = {'pendiente', 'en cocina', 'en camino'};
+            final activeStatuses = {
+              'pendiente',
+              'en cocina',
+              'listo',
+              'en camino',
+            };
             final pendingOrders = domicilioOrders.where((o) {
               final st = o['status'];
               final assignedId = o['delivery_driver_id'];
@@ -634,6 +680,8 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               return o['delivery_driver_id'] == currentDriverId;
             }).toList();
 
+            _detectReadyForPickupAlerts(domicilioOrders, currentDriverId);
+
             return TabBarView(
               children: [
                 _buildOrderList(
@@ -660,6 +708,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
         ),
       ),
     );
+  }
+
+  String _normalizeStatus(dynamic status) {
+    return (status ?? '').toString().trim().toLowerCase();
   }
 
   Widget _buildOrderList(
@@ -690,7 +742,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     Widget itemBuilder(BuildContext context, int index) {
       final ord = orders[index];
       final orderId = ord['id'] as int;
-      final status = ord['status'] as String;
+      final status = _normalizeStatus(ord['status']);
       final phone = ord['customer_phone'] ?? 'Sin número';
       final rawCustomerName = (ord['customer_name'] ?? '').toString().trim();
       final customerName =
@@ -772,7 +824,7 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                       style: const TextStyle(fontSize: 11, color: Colors.white),
                     ),
                     backgroundColor: status == 'listo'
-                        ? Colors.teal
+                        ? (isMyOrder ? Colors.amber.shade700 : Colors.teal)
                         : isDeliveredView
                             ? Colors.green
                             : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
@@ -935,27 +987,28 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                         child: const Text('Soltar'),
                       ),
                       const SizedBox(width: 8),
-                      if (status != 'en camino')
+                      if (status == 'en camino')
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade700,
+                            backgroundColor: Colors.green.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () => _confirmCompleteDelivery(orderId),
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text('Entregado'),
+                        )
+                      else
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: status == 'listo'
+                                ? Colors.amber.shade700
+                                : Colors.blue.shade700,
                             foregroundColor: Colors.white,
                           ),
                           onPressed: () => _startDelivery(orderId),
                           icon: const Icon(Icons.two_wheeler),
                           label: const Text('Iniciar Entrega'),
                         )
-                      else
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () =>
-                              _confirmCompleteDelivery(orderId),
-                          icon: const Icon(Icons.check_circle),
-                          label: const Text('Entregado'),
-                        ),
                     ] else if (isOtherDriver) ...[
                       if (_isAdmin) ...[
                         OutlinedButton(
