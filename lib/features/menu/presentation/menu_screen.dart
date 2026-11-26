@@ -6,15 +6,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/menu_provider.dart';
 import '../domain/product.dart';
-import '../../admin/presentation/cash_closing_screen.dart';
-import '../../admin/presentation/orders_dashboard_screen.dart';
+import '../../admin/presentation/admin_hub_screen.dart';
 import '../../admin/presentation/product_edit_screen.dart';
-import '../../admin/presentation/users_roles_screen.dart';
 import '../../auth/presentation/auth_screen.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../cart/presentation/cart_controller.dart';
 import '../../cart/presentation/cart_screen.dart';
-import '../../delivery/presentation/driver_orders_screen.dart';
 import 'product_customization_dialog.dart';
 import 'widgets/product_image_viewer.dart';
 import '../../../core/utils/image_focus_helper.dart';
@@ -33,6 +30,7 @@ class MenuScreen extends ConsumerStatefulWidget {
 
 class _MenuScreenState extends ConsumerState<MenuScreen> {
   String _userRole = 'cliente';
+  List<String> _allowedModules = const [];
 
   @override
   void initState() {
@@ -43,7 +41,12 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
   Future<void> _checkRole() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
-      if (mounted) setState(() => _userRole = 'cliente');
+      if (mounted) {
+        setState(() {
+          _userRole = 'cliente';
+          _allowedModules = const [];
+        });
+      }
       await OrderBackgroundMonitor.instance.refreshSession();
       return;
     }
@@ -51,18 +54,34 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     try {
       final res = await Supabase.instance.client
           .from('profiles')
-          .select('role')
+          .select('role, allowed_modules')
           .eq('id', user.id)
           .maybeSingle();
 
-      if (mounted && res != null && res['role'] != null) {
-        setState(() => _userRole = res['role'] as String);
+      if (mounted && res != null) {
+        setState(() {
+          _userRole = (res['role'] ?? 'cliente').toString();
+          _allowedModules = _parseModules(res['allowed_modules']);
+        });
       }
     } catch (_) {
-      if (mounted) setState(() => _userRole = 'cliente');
+      if (mounted) {
+        setState(() {
+          _userRole = 'cliente';
+          _allowedModules = const [];
+        });
+      }
     }
 
     await OrderBackgroundMonitor.instance.refreshSession();
+  }
+
+  List<String> _parseModules(dynamic value) {
+    if (value == null) return const [];
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    return const [];
   }
 
   String _formatOrderTime(dynamic createdAt) {
@@ -453,70 +472,86 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         currentUser != null && userPoints >= 150 && bestReward != null;
 
     final isAdmin = _userRole == 'admin';
-    final isKitchen = _userRole == 'cocinero';
+    final isKitchen = _userRole == 'cocinero' || _userRole == 'cocina';
     final isDriver = _userRole == 'repartidor';
     // Roles que pueden atender en mostrador/caja.
-    final isPosStaff = isAdmin || _userRole == 'cocina' || isKitchen;
+    final isPosStaff = isAdmin || isKitchen;
+
+    final modules = _allowedModules;
+    final canViewKitchen = isAdmin || isKitchen || modules.contains('cocina');
+    final canViewDriver = isAdmin || isDriver || modules.contains('rutas');
+    final canViewCashClosing = isAdmin || modules.contains('cierre_caja');
+    final canViewExpenses = isAdmin || modules.contains('gastos');
+    final canViewUsers = isAdmin || modules.contains('usuarios');
+    final canManageMenu = isAdmin || modules.contains('menu');
+
+    final showAdminHub = canViewKitchen ||
+        canViewDriver ||
+        canViewCashClosing ||
+        canViewExpenses ||
+        canViewUsers ||
+        canManageMenu;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isCompact = screenWidth < 400;
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("K'OTEMAL - Menú"),
-          centerTitle: true,
+          titleSpacing: 4,
+          centerTitle: false,
+          title: const FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              "K'OTEMAL - Menú",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
           actions: [
-            if (isAdmin)
-              IconButton(
-                icon: const Icon(Icons.manage_accounts),
-                tooltip: 'Asignar Roles',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UsersRolesScreen()),
-                  );
-                },
-              ),
-
-            if (isAdmin || isKitchen)
-              IconButton(
-                icon: const Icon(Icons.soup_kitchen_outlined),
-                tooltip: 'Panel de Cocina',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const OrdersDashboardScreen(),
+            if (showAdminHub)
+              Padding(
+                padding: EdgeInsets.only(right: isCompact ? 4 : 8),
+                child: FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 10 : 12,
+                      vertical: isCompact ? 6 : 8,
                     ),
-                  );
-                },
-              ),
-
-            if (isAdmin)
-              IconButton(
-                icon: const Icon(Icons.point_of_sale),
-                tooltip: 'Cierre de Caja',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const CashClosingScreen(),
+                    minimumSize: isCompact ? Size.zero : null,
+                    tapTargetSize: isCompact
+                        ? MaterialTapTargetSize.shrinkWrap
+                        : MaterialTapTargetSize.padded,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminHubScreen(
+                          isAdmin: isAdmin,
+                          canViewKitchen: canViewKitchen,
+                          canViewDriver: canViewDriver,
+                          canViewCashClosing: canViewCashClosing,
+                          canViewExpenses: canViewExpenses,
+                          canViewUsers: canViewUsers,
+                          canManageMenu: canManageMenu,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.dashboard_customize,
+                      size: isCompact ? 18 : 20),
+                  label: Text(
+                    'Panel',
+                    style: TextStyle(
+                      fontSize: isCompact ? 13 : 14,
+                      fontWeight: FontWeight.w600,
                     ),
-                  );
-                },
-              ),
-
-            if (isAdmin || isDriver)
-              IconButton(
-                icon: const Icon(Icons.two_wheeler),
-                tooltip: 'Rutas y Entregas',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DriverOrdersScreen(isAdmin: isAdmin),
-                    ),
-                  );
-                },
+                  ),
+                ),
               ),
 
             IconButton(
@@ -571,7 +606,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                 .toLowerCase()
                                 .contains('comida'))
                             .toList(),
-                        isAdmin: isAdmin,
+                        canManageMenu: canManageMenu,
                         onRefresh: () => ref.invalidate(menuListProvider),
                         maxRewardDiscount: showPointsBanner
                             ? bestReward.discountAmount
@@ -584,7 +619,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                 .toLowerCase()
                                 .contains('bebida'))
                             .toList(),
-                        isAdmin: isAdmin,
+                        canManageMenu: canManageMenu,
                         onRefresh: () => ref.invalidate(menuListProvider),
                         maxRewardDiscount: showPointsBanner
                             ? bestReward.discountAmount
@@ -597,7 +632,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                 .toLowerCase()
                                 .contains('postre'))
                             .toList(),
-                        isAdmin: isAdmin,
+                        canManageMenu: canManageMenu,
                         onRefresh: () => ref.invalidate(menuListProvider),
                         maxRewardDiscount: showPointsBanner
                             ? bestReward.discountAmount
@@ -618,7 +653,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           userId: currentUser?.id,
           onOpenOrders: () => _showOrdersModal(context),
         ),
-        floatingActionButton: isAdmin
+        floatingActionButton: canManageMenu
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -683,13 +718,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
 
 class _ProductList extends ConsumerWidget {
   final List<Product> products;
-  final bool isAdmin;
+  final bool canManageMenu;
   final VoidCallback onRefresh;
   final double? maxRewardDiscount;
 
   const _ProductList({
     required this.products,
-    required this.isAdmin,
+    required this.canManageMenu,
     required this.onRefresh,
     this.maxRewardDiscount,
   });
@@ -787,7 +822,7 @@ class _ProductList extends ConsumerWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: isAvailable ? () => _handleProductTap(context, ref, item) : null,
-              onLongPress: isAdmin
+              onLongPress: canManageMenu
                   ? () async {
                       await Navigator.push(
                         context,
@@ -972,7 +1007,7 @@ class _ProductList extends ConsumerWidget {
                                 ),
                                 Row(
                                   children: [
-                                    if (isAdmin)
+                                    if (canManageMenu)
                                       IconButton(
                                         icon: const Icon(Icons.edit_outlined,
                                             size: 20, color: Colors.blueGrey),

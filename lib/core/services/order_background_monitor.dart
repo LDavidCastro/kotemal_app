@@ -19,6 +19,7 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
 
   bool _started = false;
   String? _role;
+  List<String> _allowedModules = const [];
   String? _currentUserId;
   Set<int> _guestOrderIds = <int>{};
   Set<int> _knownOrderIds = <int>{};
@@ -30,9 +31,15 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
   int _alertCounter = 0;
 
   bool get _isKitchenRole =>
-      _role == 'admin' || _role == 'cocina' || _role == 'cocinero';
+      _role == 'admin' ||
+      _role == 'cocina' ||
+      _role == 'cocinero' ||
+      _allowedModules.contains('cocina');
 
-  bool get _isWorkerRole => _isKitchenRole || _role == 'repartidor';
+  bool get _isDriverRole =>
+      _role == 'repartidor' || _allowedModules.contains('rutas');
+
+  bool get _isWorkerRole => _isKitchenRole || _isDriverRole;
 
   Future<void> start() async {
     if (_started) return;
@@ -124,21 +131,28 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
   Future<void> _configureSession() async {
     final user = Supabase.instance.client.auth.currentUser;
     var role = 'cliente';
+    List<String> modules = const [];
 
     if (user != null) {
       try {
         final res = await Supabase.instance.client
             .from('profiles')
-            .select('role')
+            .select('role, allowed_modules')
             .eq('id', user.id)
             .maybeSingle();
         role = (res?['role']?.toString() ?? 'cliente').trim().toLowerCase();
+        final rawModules = res?['allowed_modules'];
+        if (rawModules is List) {
+          modules = rawModules.map((e) => e.toString()).toList();
+        }
       } catch (_) {
         role = 'cliente';
+        modules = const [];
       }
     }
 
     _role = role;
+    _allowedModules = modules;
     _currentUserId = user?.id;
 
     try {
@@ -231,7 +245,7 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
           OrderAlertService.instance.announceKitchenOrder(order);
           _alertCounter++;
         }
-      } else if (_role == 'repartidor') {
+      } else if (_isDriverRole) {
         if (isDelivery &&
             isNew &&
             (status == 'pendiente' ||

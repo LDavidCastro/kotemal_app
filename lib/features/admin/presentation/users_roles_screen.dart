@@ -19,6 +19,48 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
 
   static const _tabs = ['Clientes', 'Repartidores', 'Cocineros', 'Admins'];
 
+  static const List<String> _allModules = [
+    'cocina',
+    'rutas',
+    'cierre_caja',
+    'gastos',
+    'usuarios',
+    'menu',
+  ];
+
+  static const Map<String, String> _moduleLabels = {
+    'cocina': 'Panel de Cocina',
+    'rutas': 'Rutas y Entregas',
+    'cierre_caja': 'Cierre de Caja',
+    'gastos': 'Registro de Gastos',
+    'usuarios': 'Usuarios y Permisos',
+    'menu': 'Gestión de Menú',
+  };
+
+  List<String> _parseModules(dynamic value) {
+    if (value == null) return const [];
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    return const [];
+  }
+
+  List<String> _defaultModulesForRole(String role, List<String>? current) {
+    final existing = current ?? const [];
+    switch (role) {
+      case 'admin':
+        return List<String>.from(_allModules);
+      case 'cliente':
+        return const [];
+      case 'cocinero':
+        return existing.isEmpty ? const ['cocina'] : List<String>.from(existing);
+      case 'repartidor':
+        return existing.isEmpty ? const ['rutas'] : List<String>.from(existing);
+      default:
+        return const [];
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -45,7 +87,7 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
     try {
       final data = await _supabase
           .from('profiles')
-          .select()
+          .select('id, full_name, phone, role, points, allowed_modules')
           .order('full_name', ascending: true);
 
       if (!mounted) return;
@@ -74,19 +116,30 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
 
   Future<void> _updateUserRole(String userId, String newRole) async {
     final index = _allUsers.indexWhere((user) => user['id'] == userId);
-    final previousRole = index >= 0 ? _allUsers[index]['role'] : null;
+    final previousUser = index >= 0
+        ? Map<String, dynamic>.from(_allUsers[index])
+        : <String, dynamic>{};
+
+    final updatedModules = _defaultModulesForRole(
+      newRole,
+      _parseModules(previousUser['allowed_modules']),
+    );
 
     if (index >= 0) {
       setState(() {
-        _allUsers[index] = {..._allUsers[index], 'role': newRole};
+        _allUsers[index] = {
+          ..._allUsers[index],
+          'role': newRole,
+          'allowed_modules': updatedModules,
+        };
       });
     }
 
     try {
-      await _supabase
-          .from('profiles')
-          .update({'role': newRole})
-          .eq('id', userId);
+      await _supabase.from('profiles').update({
+        'role': newRole,
+        'allowed_modules': updatedModules,
+      }).eq('id', userId);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,12 +151,66 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
 
       if (index >= 0) {
         setState(() {
-          _allUsers[index] = {..._allUsers[index], 'role': previousRole};
+          _allUsers[index] = previousUser;
         });
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al cambiar rol: $e')),
+      );
+    }
+  }
+
+  Future<void> _updateAllowedModules(
+    String userId,
+    String module,
+    bool enabled,
+  ) async {
+    final index = _allUsers.indexWhere((user) => user['id'] == userId);
+    if (index < 0) return;
+
+    final currentModules = _parseModules(_allUsers[index]['allowed_modules']);
+    final updatedModules = List<String>.from(currentModules);
+    if (enabled) {
+      if (!updatedModules.contains(module)) updatedModules.add(module);
+    } else {
+      updatedModules.remove(module);
+    }
+
+    final previousModules = List<String>.from(currentModules);
+
+    setState(() {
+      _allUsers[index] = {
+        ..._allUsers[index],
+        'allowed_modules': updatedModules,
+      };
+    });
+
+    try {
+      await _supabase.from('profiles').update({
+        'allowed_modules': updatedModules,
+      }).eq('id', userId);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_moduleLabels[module]} ${enabled ? 'activado' : 'desactivado'}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _allUsers[index] = {
+          ..._allUsers[index],
+          'allowed_modules': previousModules,
+        };
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar permiso: $e')),
       );
     }
   }
@@ -317,10 +424,13 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
     final points = user['points'] ?? 0;
     final role = _normalizeRole(user['role'] as String?);
     final color = _roleColor(role);
+    final modules = _parseModules(user['allowed_modules']);
+    final isAdmin = role == 'admin';
 
     return Card(
       margin: EdgeInsets.zero,
-      child: ListTile(
+      child: ExpansionTile(
+        controlAffinity: ListTileControlAffinity.leading,
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(_roleIcon(role), color: color),
@@ -345,6 +455,23 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
             }
           },
         ),
+        children: [
+          if (isAdmin)
+            const ListTile(
+              leading: Icon(Icons.lock_open, color: Colors.green),
+              title: Text('Acceso total por rol Administrador'),
+            )
+          else
+            ..._allModules.map((module) {
+              return SwitchListTile(
+                dense: true,
+                title: Text(_moduleLabels[module]!),
+                value: modules.contains(module),
+                onChanged: (enabled) =>
+                    _updateAllowedModules(userId, module, enabled),
+              );
+            }),
+        ],
       ),
     );
   }
