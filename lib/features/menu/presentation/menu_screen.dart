@@ -566,53 +566,40 @@ class _ProductList extends ConsumerWidget {
       return;
     }
 
-    final cat = item.category.trim().toLowerCase();
-    final bool canCustomize =
-        item.hasVariants || cat.contains('comida') || cat.contains('postre');
-
-    if (canCustomize) {
-      final CustomizedProductResult? result =
-          await showModalBottomSheet<CustomizedProductResult>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => FractionallySizedBox(
-          heightFactor: 0.88,
-          child: ClipRRect(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
-            child: ProductCustomizationDialog(product: item),
-          ),
+    // Todos los productos (Comidas, Bebidas y Postres) abren el modal de
+    // detalles para ver la foto ampliable, elegir variante, quitar
+    // ingredientes, agregar extras y elegir cantidad.
+    final CustomizedProductResult? result =
+        await showModalBottomSheet<CustomizedProductResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.88,
+        child: ClipRRect(
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
+          child: ProductCustomizationDialog(product: item),
         ),
-      );
+      ),
+    );
 
-      if (result != null) {
-        final cartNotifier = ref.read(cartProvider.notifier);
-        for (var i = 0; i < result.quantity; i++) {
-          cartNotifier.addProduct(
-            item,
-            notes: result.notes,
-            customPrice: result.finalPrice,
-          );
-        }
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  '${result.quantity}x ${item.name} agregado al carrito.'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
-        }
+    if (result != null) {
+      final cartNotifier = ref.read(cartProvider.notifier);
+      for (var i = 0; i < result.quantity; i++) {
+        cartNotifier.addProduct(
+          item,
+          notes: result.notes,
+          customPrice: result.finalPrice,
+          imageUrl: result.selectedImageUrl,
+        );
       }
-    } else {
-      ref.read(cartProvider.notifier).addProduct(item);
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Agregado: ${item.name}'),
+            content: Text(
+                '${result.quantity}x ${item.name} agregado al carrito.'),
             duration: const Duration(seconds: 1),
           ),
         );

@@ -9,10 +9,14 @@ class CustomizedProductResult {
   final String notes;
   final int quantity;
 
+  /// Foto que debe mostrarse en el carrito (variante elegida o foto principal).
+  final String? selectedImageUrl;
+
   CustomizedProductResult({
     required this.finalPrice,
     required this.notes,
     this.quantity = 1,
+    this.selectedImageUrl,
   });
 }
 
@@ -50,6 +54,18 @@ class _ProductCustomizationDialogState
   late int _quantity;
 
   bool get _isEditing => widget.initialNotes != null;
+
+  /// Foto de la variante seleccionada, si tiene una propia; si no, la foto
+  /// principal del producto.
+  String? get _activeImageUrl {
+    final variantImage = _selectedVariant?['image_url'];
+    if (variantImage is String && variantImage.trim().isNotEmpty) {
+      return variantImage;
+    }
+    final productImage = widget.product.imageUrl;
+    if (productImage != null && productImage.isNotEmpty) return productImage;
+    return null;
+  }
 
   @override
   void initState() {
@@ -168,11 +184,11 @@ class _ProductCustomizationDialogState
   }
 
   void _openImageViewer() {
-    if (widget.product.imageUrl != null &&
-        widget.product.imageUrl!.isNotEmpty) {
+    final imageUrl = _activeImageUrl;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
       showProductImageViewer(
         context,
-        imageUrl: widget.product.imageUrl!,
+        imageUrl: imageUrl,
         title: widget.product.name,
       );
     }
@@ -214,6 +230,7 @@ class _ProductCustomizationDialogState
         finalPrice: finalPrice,
         notes: _buildNotes(),
         quantity: _isEditing ? 1 : _quantity,
+        selectedImageUrl: _activeImageUrl,
       ),
     );
   }
@@ -269,19 +286,6 @@ class _ProductCustomizationDialogState
                               style: const TextStyle(color: Colors.red),
                             ),
                           ),
-                        )
-                      else if (_removables.isEmpty &&
-                          _extras.isEmpty &&
-                          _variants.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: Text(
-                              'Este producto no cuenta con personalizaciones adicionales.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
                         ),
                       const SizedBox(height: 100),
                     ],
@@ -294,24 +298,35 @@ class _ProductCustomizationDialogState
   }
 
   Widget _buildHeader(double basePrice) {
+    final activeImageUrl = _activeImageUrl;
+    final hasImage = activeImageUrl != null && activeImageUrl.isNotEmpty;
+
     return SizedBox(
       height: 185,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          widget.product.imageUrl != null &&
-                  widget.product.imageUrl!.isNotEmpty
-              ? GestureDetector(
-                  onTap: _openImageViewer,
-                  child: Image.network(
-                    stripImageFocus(widget.product.imageUrl!),
-                    fit: BoxFit.cover,
-                    alignment: parseImageFocus(widget.product.imageUrl),
-                    errorBuilder: (_, _, _) => _dialogPlaceholder(),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: hasImage
+                ? SizedBox.expand(
+                    key: ValueKey(activeImageUrl),
+                    child: GestureDetector(
+                      onTap: _openImageViewer,
+                      child: Image.network(
+                        stripImageFocus(activeImageUrl),
+                        fit: BoxFit.cover,
+                        alignment: parseImageFocus(activeImageUrl),
+                        errorBuilder: (_, _, _) => _dialogPlaceholder(),
+                      ),
+                    ),
+                  )
+                : SizedBox.expand(
+                    key: const ValueKey('placeholder'),
+                    child: _dialogPlaceholder(),
                   ),
-                )
-              : _dialogPlaceholder(),
+          ),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -331,8 +346,7 @@ class _ProductCustomizationDialogState
             right: 12,
             child: Row(
               children: [
-                if (widget.product.imageUrl != null &&
-                    widget.product.imageUrl!.isNotEmpty)
+                if (hasImage)
                   CircleAvatar(
                     backgroundColor: Colors.black45,
                     radius: 18,
@@ -738,7 +752,7 @@ class _ProductCustomizationDialogState
                   child: Text(
                     _isEditing
                         ? 'Guardar · $totalLabel'
-                        : 'Agregar · $totalLabel',
+                        : 'Agregar al Carrito · $totalLabel',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

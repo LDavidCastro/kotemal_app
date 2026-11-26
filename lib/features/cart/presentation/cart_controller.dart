@@ -10,26 +10,37 @@ class CartItem {
   final String? notes; // Ej: "SIN: Cebolla | CON EXTRA: Queso extra"
   final double unitPrice;
 
+  /// Foto de la variante elegida (puede incluir `#focus=x,y`). Si es null se
+  /// usa la foto principal de [product].
+  final String? imageUrl;
+
   CartItem({
     required this.product,
     this.quantity = 1,
     this.notes,
     double? unitPrice,
+    this.imageUrl,
   }) : unitPrice = unitPrice ?? product.price;
 
   double get subtotal => unitPrice * quantity;
+
+  /// Foto efectiva a mostrar en el carrito.
+  String? get displayImageUrl =>
+      (imageUrl != null && imageUrl!.isNotEmpty) ? imageUrl : product.imageUrl;
 
   CartItem copyWith({
     Product? product,
     int? quantity,
     String? notes,
     double? unitPrice,
+    String? imageUrl,
   }) {
     return CartItem(
       product: product ?? this.product,
       quantity: quantity ?? this.quantity,
       notes: notes ?? this.notes,
       unitPrice: unitPrice ?? this.unitPrice,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 }
@@ -51,7 +62,12 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     }
   }
 
-  void addProduct(Product product, {String? notes, double? customPrice}) {
+  void addProduct(
+    Product product, {
+    String? notes,
+    double? customPrice,
+    String? imageUrl,
+  }) {
     final finalPrice = customPrice ?? product.price;
     final itemNotes = notes ?? '';
 
@@ -64,7 +80,13 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
       final existing = state[index];
       state = [
         ...state.sublist(0, index),
-        existing.copyWith(quantity: existing.quantity + 1),
+        CartItem(
+          product: existing.product,
+          quantity: existing.quantity + 1,
+          notes: existing.notes,
+          unitPrice: existing.unitPrice,
+          imageUrl: imageUrl ?? existing.imageUrl,
+        ),
         ...state.sublist(index + 1),
       ];
     } else {
@@ -75,6 +97,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
           quantity: 1,
           notes: itemNotes.isNotEmpty ? itemNotes : null,
           unitPrice: finalPrice,
+          imageUrl: imageUrl,
         ),
       ];
     }
@@ -106,13 +129,17 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     int index, {
     required String? newNotes,
     required double newUnitPrice,
+    String? newImageUrl,
   }) {
     if (index < 0 || index >= state.length) return;
 
     final existing = state[index];
-    final updated = existing.copyWith(
+    final updated = CartItem(
+      product: existing.product,
+      quantity: existing.quantity,
       notes: newNotes,
       unitPrice: newUnitPrice,
+      imageUrl: newImageUrl,
     );
 
     state = [

@@ -37,6 +37,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
   List<Map<String, dynamic>> _customizations = [];
   int? _createdProductId;
+  int? _uploadingVariantId;
 
   bool get isEditing => widget.product != null || _createdProductId != null;
   int? get currentProductId => widget.product?.id ?? _createdProductId;
@@ -175,6 +176,121 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Fotos individuales por variante / opción de precio
+  // ---------------------------------------------------------------------------
+
+  String _safeImageExtension(String path) {
+    final extension = path.split('.').last.toLowerCase();
+    return const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+        ? extension
+        : 'jpg';
+  }
+
+  /// Sube una foto para una variante y la guarda en
+  /// `product_customizations.image_url`, luego permite ajustar el enfoque.
+  Future<void> _pickAndUploadVariantImage(Map<String, dynamic> variant) async {
+    final variantId = variant['id'] as int?;
+    if (variantId == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null || !mounted) return;
+
+    setState(() => _uploadingVariantId = variantId);
+    String? publicUrl;
+    try {
+      final file = File(picked.path);
+      final fileName =
+          'variant_${currentProductId ?? 'x'}_${variantId}_'
+          '${DateTime.now().millisecondsSinceEpoch}.'
+          '${_safeImageExtension(picked.path)}';
+
+      await _supabase.storage.from('menu-images').upload(fileName, file);
+      publicUrl = _supabase.storage.from('menu-images').getPublicUrl(fileName);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al subir la foto de la opción: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingVariantId = null);
+    }
+
+    if (publicUrl == null || !mounted) return;
+
+    await _saveVariantImageUrl(variantId, publicUrl);
+    if (!mounted) return;
+    await _adjustVariantImageFocusUrl(
+      variantId,
+      publicUrl,
+      variant['name'] as String? ?? '',
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Foto de la opción lista ✓')),
+      );
+    }
+  }
+
+  /// Guarda la URL de la foto en la fila de `product_customizations`.
+  Future<void> _saveVariantImageUrl(int variantId, String url) async {
+    try {
+      await _supabase
+          .from('product_customizations')
+          .update({'image_url': url})
+          .eq('id', variantId);
+      await _loadCustomizations();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo guardar la foto de la opción: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Ajusta el enfoque de la foto de una variante existente.
+  Future<void> _adjustVariantImageFocus(Map<String, dynamic> variant) async {
+    final variantId = variant['id'] as int?;
+    final imageUrl = variant['image_url'] as String?;
+    if (variantId == null || imageUrl == null || imageUrl.isEmpty) return;
+
+    await _adjustVariantImageFocusUrl(
+      variantId,
+      imageUrl,
+      variant['name'] as String? ?? '',
+    );
+  }
+
+  Future<void> _adjustVariantImageFocusUrl(
+    int variantId,
+    String imageUrl,
+    String variantName,
+  ) async {
+    final baseUrl = stripImageFocus(imageUrl);
+
+    final alignment = await showDialog<Alignment>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ImageFocusDialog(
+        imageUrl: baseUrl,
+        title: variantName.trim().isEmpty
+            ? 'Foto de la opción'
+            : variantName.trim(),
+        initialAlignment: parseImageFocus(imageUrl),
+      ),
+    );
+
+    if (alignment == null || !mounted) return;
+
+    await _saveVariantImageUrl(variantId, applyImageFocus(baseUrl, alignment));
+  }
+
   // Guardar o Actualizar Datos Principales
   Future<void> _saveProductData() async {
     final name = _nameController.text.trim();
@@ -291,6 +407,49 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   Future<void> _deleteCustomization(int id) async {
     await _supabase.from('product_customizations').delete().eq('id', id);
     _loadCustomizations();
+  }
+
+  /// Miniatura 44x44 de la foto de la variante (o ícono de cámara si no tiene).
+  Widget _buildVariantThumbnail(Map<String, dynamic> variant) {
+    final imageUrl = variant['image_url'] as String?;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+    final name = variant['name'] as String? ?? 'Opción';
+
+    return GestureDetector(
+      onTap: hasImage
+          ? () => showProductImageViewer(
+                context,
+                imageUrl: imageUrl,
+                title: name,
+              )
+          : () => _pickAndUploadVariantImage(variant),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: hasImage
+            ? Image.network(
+                stripImageFocus(imageUrl),
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                alignment: parseImageFocus(imageUrl),
+                errorBuilder: (_, _, _) => _variantThumbnailPlaceholder(),
+              )
+            : _variantThumbnailPlaceholder(),
+      ),
+    );
+  }
+
+  Widget _variantThumbnailPlaceholder() {
+    return Container(
+      width: 44,
+      height: 44,
+      color: Colors.grey.shade200,
+      child: const Icon(
+        Icons.add_a_photo_outlined,
+        size: 20,
+        color: Colors.grey,
+      ),
+    );
   }
 
   @override
@@ -535,14 +694,86 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 itemCount: variants.length,
                 itemBuilder: (ctx, i) {
                   final v = variants[i];
+                  final variantId = v['id'] as int;
+                  final imageUrl = v['image_url'] as String?;
+                  final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+                  final isUploading = _uploadingVariantId == variantId;
+
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text(v['name']),
-                    subtitle: Text('Q${(v['price'] as num).toStringAsFixed(2)}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteCustomization(v['id']),
+                    leading: _buildVariantThumbnail(v),
+                    title: Text(v['name'] as String? ?? ''),
+                    subtitle: Text(
+                      'Q${(v['price'] as num).toStringAsFixed(2)}'
+                      '${hasImage ? ' · Con foto' : ' · Sin foto'}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          icon: isUploading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.camera_alt,
+                                  size: 20,
+                                  color: hasImage
+                                      ? Colors.blueGrey
+                                      : Colors.deepOrange,
+                                ),
+                          tooltip: hasImage
+                              ? 'Cambiar foto de la opción'
+                              : 'Agregar foto de la opción',
+                          onPressed: _uploadingVariantId != null
+                              ? null
+                              : () => _pickAndUploadVariantImage(v),
+                        ),
+                        if (hasImage)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 36,
+                              minHeight: 36,
+                            ),
+                            icon: const Icon(
+                              Icons.center_focus_strong,
+                              size: 20,
+                              color: Colors.blueGrey,
+                            ),
+                            tooltip: 'Ajustar enfoque de la opción',
+                            onPressed: _uploadingVariantId != null
+                                ? null
+                                : () => _adjustVariantImageFocus(v),
+                          ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          icon: const Icon(
+                            Icons.delete,
+                            size: 20,
+                            color: Colors.red,
+                          ),
+                          tooltip: 'Eliminar opción',
+                          onPressed: () => _deleteCustomization(variantId),
+                        ),
+                      ],
                     ),
                   );
                 },

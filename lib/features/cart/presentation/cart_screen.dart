@@ -41,6 +41,7 @@ class CartScreen extends ConsumerWidget {
             index,
             newNotes: result.notes.isNotEmpty ? result.notes : null,
             newUnitPrice: result.finalPrice,
+            newImageUrl: result.selectedImageUrl,
           );
 
       if (context.mounted) {
@@ -338,6 +339,8 @@ class CartScreen extends ConsumerWidget {
                       final item = cartItems[index];
                       final isCustomized = item.notes != null && item.notes!.isNotEmpty;
                       final noteSections = _parseNotes(item.notes);
+                      final imageUrl = item.displayImageUrl;
+                      final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
                       return Card(
                         elevation: 0,
@@ -355,25 +358,23 @@ class CartScreen extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   GestureDetector(
-                                    onTap: item.product.imageUrl != null &&
-                                            item.product.imageUrl!.isNotEmpty
+                                    onTap: hasImage
                                         ? () => showProductImageViewer(
                                               context,
-                                              imageUrl: item.product.imageUrl!,
+                                              imageUrl: imageUrl,
                                               title: item.product.name,
                                             )
                                         : null,
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: item.product.imageUrl != null &&
-                                              item.product.imageUrl!.isNotEmpty
+                                      child: hasImage
                                           ? Image.network(
-                                              stripImageFocus(item.product.imageUrl!),
+                                              stripImageFocus(imageUrl),
                                               width: 76,
                                               height: 76,
                                               fit: BoxFit.cover,
-                                              alignment: parseImageFocus(
-                                                  item.product.imageUrl),
+                                              alignment:
+                                                  parseImageFocus(imageUrl),
                                               errorBuilder: (_, _, _) => _avatar(item),
                                             )
                                           : _avatar(item),
