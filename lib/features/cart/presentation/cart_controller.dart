@@ -161,6 +161,10 @@ final cartProvider = StateNotifierProvider<CartNotifier, List<CartItem>>((ref) {
   return CartNotifier(ref);
 });
 
+/// Activa/desactiva el Modo Mostrador (Caja) para que el personal tome
+/// pedidos presenciales de clientes que llegan al local.
+final posModeProvider = StateProvider<bool>((ref) => false);
+
 final selectedRewardProvider = StateProvider<RewardTier?>((ref) => null);
 
 final userPointsProvider = FutureProvider.autoDispose<int>((ref) async {

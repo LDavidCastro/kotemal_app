@@ -67,7 +67,11 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserProfile();
+    // En Modo Mostrador el nombre debe quedar limpio para escribir el del
+    // cliente que llegó al local (no el del cajero/admin).
+    if (!ref.read(posModeProvider)) {
+      _loadUserProfile();
+    }
   }
 
   @override
@@ -102,11 +106,14 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
   }
 
   Future<void> _submitOnSiteOrder() async {
+    final isPosMode = ref.read(posModeProvider);
     final cartItems = ref.read(cartProvider);
     final subtotal = ref.read(cartTotalProvider);
     final selectedReward = ref.read(selectedRewardProvider);
 
-    final reward = selectedReward != null &&
+    // En caja no se canjean puntos: el cliente del mostrador no tiene cuenta.
+    final reward = !isPosMode &&
+            selectedReward != null &&
             subtotal >= selectedReward.minFoodSubtotal
         ? selectedReward
         : null;
@@ -116,7 +123,13 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
     if (cartItems.isEmpty) return;
 
-    if (_selectedDeliveryType == 'local' &&
+    // En Modo Mostrador solo existen las modalidades presenciales.
+    final deliveryType =
+        isPosMode && _selectedDeliveryType == 'domicilio'
+            ? 'local'
+            : _selectedDeliveryType;
+
+    if (deliveryType == 'local' &&
         _tableController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -134,7 +147,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       return;
     }
 
-    if (_phoneController.text.trim().isEmpty) {
+    if (!isPosMode && _phoneController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Ingresa tu número de teléfono de contacto.')),
@@ -147,21 +160,28 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     try {
       final supabase = Supabase.instance.client;
       final currentUser = supabase.auth.currentUser;
-      final deviceId = await DeviceIdService.getDeviceId();
+      final deviceId = !isPosMode && currentUser == null
+          ? await DeviceIdService.getDeviceId()
+          : null;
+      final phone = _phoneController.text.trim();
 
       final orderResponse = await supabase.from('orders').insert({
-        'customer_id': currentUser?.id,
+        // Las ventas de caja no se mezclan con el historial del cajero/admin.
+        'customer_id': isPosMode ? null : currentUser?.id,
         'customer_name': _nameController.text.trim(),
         'total': total,
         'status': 'pendiente',
-        'delivery_type': _selectedDeliveryType,
-        'table_number': _selectedDeliveryType == 'local'
+        'delivery_type': deliveryType,
+        'table_number': deliveryType == 'local'
             ? _tableController.text.trim()
             : null,
         'delivery_notes': _notesController.text.trim(),
-        'customer_phone': _phoneController.text.trim(),
-        'guest_device_id': currentUser == null ? deviceId : null,
-        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+        'customer_phone':
+            (isPosMode && phone.isEmpty) ? 'Mostrador' : phone,
+        'guest_device_id': deviceId,
+        'platform': isPosMode
+            ? 'pos_local'
+            : (kIsWeb ? 'web' : defaultTargetPlatform.name),
       }).select('id').single();
 
       final orderId = orderResponse['id'] as int;
@@ -176,7 +196,8 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
       await supabase.from('order_items').insert(itemsToInsert);
 
-      if (currentUser == null) {
+      // El pedido de mostrador no se guarda como pedido del dispositivo.
+      if (!isPosMode && currentUser == null) {
         await GuestOrdersService.saveOrderId(orderId);
       }
 
@@ -204,7 +225,25 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       ref.read(cartProvider.notifier).clearCart();
       ref.invalidate(userPointsProvider);
 
-      if (mounted) {
+      if (!mounted) return;
+
+      if (isPosMode) {
+        // Deja el mostrador listo para el siguiente cliente.
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.green.shade700,
+            content: Text(
+              '✓ Orden #$orderId enviada a cocina',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -223,13 +262,13 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     }
   }
 
-  _DeliveryOption get _activeOption => _options.firstWhere(
-        (o) => o.type == _selectedDeliveryType,
+  _DeliveryOption _optionFor(String deliveryType) => _options.firstWhere(
+        (o) => o.type == deliveryType,
         orElse: () => _options.first,
       );
 
-  String get _confirmButtonLabel {
-    switch (_selectedDeliveryType) {
+  String _confirmButtonLabel(String deliveryType) {
+    switch (deliveryType) {
       case 'local':
         return 'Confirmar Pedido en Mesa';
       case 'para_llevar':
@@ -243,9 +282,11 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isPosMode = ref.watch(posModeProvider);
     final subtotal = ref.watch(cartTotalProvider);
     final selectedReward = ref.watch(selectedRewardProvider);
-    final appliedReward = selectedReward != null &&
+    final appliedReward = !isPosMode &&
+            selectedReward != null &&
             subtotal >= selectedReward.minFoodSubtotal
         ? selectedReward
         : null;
@@ -253,7 +294,15 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
         .clamp(0.0, double.infinity)
         .toDouble();
 
-    final activeColor = _activeOption.color;
+    // En Modo Mostrador solo se ofrecen las modalidades presenciales.
+    final deliveryType =
+        isPosMode && _selectedDeliveryType == 'domicilio'
+            ? 'local'
+            : _selectedDeliveryType;
+    final options = isPosMode
+        ? _options.where((o) => o.type != 'domicilio').toList()
+        : _options;
+    final activeColor = _optionFor(deliveryType).color;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F9),
@@ -280,11 +329,11 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ..._options.map((option) => _buildOptionCard(option)),
+            ...options.map((option) => _buildOptionCard(option, deliveryType)),
             const SizedBox(height: 28),
-            _buildForm(activeColor),
+            _buildForm(activeColor, deliveryType, isPosMode),
             const SizedBox(height: 24),
-            if (_selectedDeliveryType != 'domicilio')
+            if (deliveryType != 'domicilio')
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -308,7 +357,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                           ),
                         )
                       : Text(
-                          '$_confirmButtonLabel (Q${total.toStringAsFixed(2)})',
+                          '${_confirmButtonLabel(deliveryType)} (Q${total.toStringAsFixed(2)})',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -341,7 +390,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                   },
                   icon: const Icon(Icons.map_outlined),
                   label: Text(
-                    _confirmButtonLabel,
+                    _confirmButtonLabel(deliveryType),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -355,8 +404,8 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     );
   }
 
-  Widget _buildOptionCard(_DeliveryOption option) {
-    final isSelected = _selectedDeliveryType == option.type;
+  Widget _buildOptionCard(_DeliveryOption option, String selectedType) {
+    final isSelected = selectedType == option.type;
     final baseColor = option.color;
 
     return GestureDetector(
@@ -441,7 +490,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     );
   }
 
-  Widget _buildForm(Color activeColor) {
+  Widget _buildForm(Color activeColor, String deliveryType, bool isPosMode) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -455,7 +504,9 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
             controller: _nameController,
             textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(
-              labelText: 'Nombre de quien recibe / ordena *',
+              labelText: isPosMode
+                  ? 'Nombre del cliente *'
+                  : 'Nombre de quien recibe / ordena *',
               hintText: 'Ej. Juan Pérez',
               prefixIcon: const Icon(Icons.person_outline),
               focusedBorder: OutlineInputBorder(
@@ -472,7 +523,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          if (_selectedDeliveryType == 'local') ...[
+          if (deliveryType == 'local') ...[
             TextField(
               controller: _tableController,
               decoration: InputDecoration(
@@ -498,7 +549,12 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
             controller: _phoneController,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
-              labelText: 'Teléfono de contacto *',
+              labelText: isPosMode
+                  ? 'Teléfono de contacto (opcional)'
+                  : 'Teléfono de contacto *',
+              hintText: isPosMode
+                  ? 'Si se deja vacío se guarda "Mostrador"'
+                  : null,
               prefixIcon: const Icon(Icons.phone),
               focusedBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: activeColor, width: 1.5),

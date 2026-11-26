@@ -308,6 +308,89 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     );
   }
 
+  /// Banner de Modo Mostrador / Caja para el personal del restaurante.
+  Widget _buildPosModeBanner(BuildContext context, WidgetRef ref) {
+    final isPosMode = ref.watch(posModeProvider);
+
+    if (!isPosMode) {
+      return Material(
+        color: Colors.grey.shade100,
+        child: InkWell(
+          onTap: () => ref.read(posModeProvider.notifier).state = true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.point_of_sale,
+                  size: 18,
+                  color: Colors.blueGrey.shade700,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Atender cliente en mostrador',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: Colors.blueGrey.shade700,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade100,
+        border: Border(
+          bottom: BorderSide(color: Colors.amber.shade400),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storefront, size: 20, color: Colors.amber.shade900),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'MODO MOSTRADOR ACTIVO — Tomando pedido en caja',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.bold,
+                color: Colors.amber.shade900,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.amber.shade900,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: () => ref.read(posModeProvider.notifier).state = false,
+            icon: const Icon(Icons.close, size: 16),
+            label: const Text(
+              'Salir',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuListProvider);
@@ -321,7 +404,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final isAdmin = _userRole == 'admin';
     final isKitchen = _userRole == 'cocinero';
     final isDriver = _userRole == 'repartidor';
-    
+    // Roles que pueden atender en mostrador/caja.
+    final isPosStaff = isAdmin || _userRole == 'cocina' || isKitchen;
+
     // Mostramos "Mis Pedidos" si es cliente (invitado o registrado) o admin
     final showCustomerOrders = !isKitchen && !isDriver;
 
@@ -423,10 +508,15 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
             ],
           ),
         ),
-        body: menuAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(child: Text('Error: $err')),
-          data: (products) {
+        body: Column(
+          children: [
+            if (isPosStaff) _buildPosModeBanner(context, ref),
+            Expanded(
+              child: menuAsync.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (err, stack) => Center(child: Text('Error: $err')),
+                data: (products) {
             return Column(
               children: [
                 if (showPointsBanner)
@@ -476,10 +566,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     ],
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
         floatingActionButton: isAdmin
             ? Column(
                 mainAxisSize: MainAxisSize.min,
