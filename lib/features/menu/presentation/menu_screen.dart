@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -73,6 +75,45 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final hh = date.hour.toString().padLeft(2, '0');
     final mm = date.minute.toString().padLeft(2, '0');
     return '$hh:$mm';
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'pendiente':
+        return Colors.orange;
+      case 'en cocina':
+        return Colors.deepOrange;
+      case 'listo':
+        return Colors.green;
+      case 'en camino':
+        return Colors.blue;
+      case 'entregado':
+        return Colors.teal;
+      case 'cancelado':
+        return Colors.red;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  Widget _buildStatusBadge(String label, String status) {
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
+    );
   }
 
   /// Despliega el modal de pedidos del día, tanto para invitados como para clientes registrados
@@ -224,7 +265,10 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                         final ord = orders[index];
                         final id = ord['id'] as int;
                         final total = ord['total'];
-                        final st = ord['status']?.toString().toUpperCase() ?? 'PENDIENTE';
+                        final rawStatus =
+                            ord['status']?.toString().trim().toLowerCase() ??
+                                'pendiente';
+                        final st = rawStatus.toUpperCase();
                         final type = ord['delivery_type'] ?? 'domicilio';
 
                         return ListTile(
@@ -244,9 +288,16 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
-                            'Estado: $st · Hora: ${_formatOrderTime(ord['created_at'])}',
+                            'Hora: ${_formatOrderTime(ord['created_at'])}',
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildStatusBadge(st, rawStatus),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.arrow_forward_ios, size: 14),
+                            ],
+                          ),
                           onTap: () {
                             Navigator.pop(ctx);
                             Navigator.push(
@@ -407,9 +458,6 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     // Roles que pueden atender en mostrador/caja.
     final isPosStaff = isAdmin || _userRole == 'cocina' || isKitchen;
 
-    // Mostramos "Mis Pedidos" si es cliente (invitado o registrado) o admin
-    final showCustomerOrders = !isKitchen && !isDriver;
-
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -417,14 +465,6 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           title: const Text("K'OTEMAL - Menú"),
           centerTitle: true,
           actions: [
-            // Botón rápido de Mis Pedidos (Invitados y Registrados)
-            if (showCustomerOrders)
-              IconButton(
-                icon: const Icon(Icons.receipt_long_outlined),
-                tooltip: 'Mis Pedidos',
-                onPressed: () => _showOrdersModal(context),
-              ),
-
             if (isAdmin)
               IconButton(
                 icon: const Icon(Icons.manage_accounts),
@@ -573,6 +613,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           ),
         ],
       ),
+        bottomNavigationBar: _TodayOrdersBanner(
+          key: ValueKey(currentUser?.id ?? 'guest'),
+          userId: currentUser?.id,
+          onOpenOrders: () => _showOrdersModal(context),
+        ),
         floatingActionButton: isAdmin
             ? Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1022,4 +1067,328 @@ class _ProductList extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Banner reactivo de "Pedidos de Hoy" para clientes registrados e invitados.
+///
+/// Escucha en tiempo real los pedidos creados hoy del usuario actual o de los
+/// IDs guardados por [GuestOrdersService] y ofrece acceso al modal de pedidos.
+class _TodayOrdersBanner extends StatefulWidget {
+  final String? userId;
+  final VoidCallback onOpenOrders;
+
+  const _TodayOrdersBanner({
+    super.key,
+    required this.userId,
+    required this.onOpenOrders,
+  });
+
+  @override
+  State<_TodayOrdersBanner> createState() => _TodayOrdersBannerState();
+}
+
+class _TodayOrdersBannerState extends State<_TodayOrdersBanner>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  StreamSubscription<List<Map<String, dynamic>>>? _subscription;
+  Timer? _guestRefreshTimer;
+  List<Map<String, dynamic>> _orders = const [];
+  Set<int> _guestOrderIds = <int>{};
+
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _pulseScale = Tween<double>(
+    begin: 1.0,
+    end: 1.16,
+  ).animate(
+    CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+  );
+
+  bool get _isGuest => widget.userId == null;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _bootstrap();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodayOrdersBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) {
+      _bootstrap();
+    } else if (_isGuest) {
+      _refreshGuestIds(resubscribeIfChanged: true);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isGuest) {
+      _refreshGuestIds(resubscribeIfChanged: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _guestRefreshTimer?.cancel();
+    _subscription?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await _subscription?.cancel();
+    _subscription = null;
+
+    if (_isGuest) {
+      await _refreshGuestIds();
+    }
+
+    _subscribe();
+
+    _guestRefreshTimer?.cancel();
+    if (_isGuest) {
+      // Mantiene al día los IDs de invitado (por si se crea un pedido nuevo).
+      _guestRefreshTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => _refreshGuestIds(resubscribeIfChanged: true),
+      );
+    }
+  }
+
+  Future<void> _refreshGuestIds({bool resubscribeIfChanged = false}) async {
+    if (!_isGuest) return;
+    try {
+      final ids = (await GuestOrdersService.getSavedOrderIds()).toSet();
+      if (!mounted || _sameIds(ids, _guestOrderIds)) return;
+
+      setState(() => _guestOrderIds = ids);
+      if (resubscribeIfChanged) _subscribe();
+    } catch (_) {}
+  }
+
+  bool _sameIds(Set<int> a, Set<int> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  void _subscribe() {
+    _subscription?.cancel();
+    _subscription = null;
+
+    final client = Supabase.instance.client;
+    final now = DateTime.now();
+    final startOfDayIso =
+        DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
+
+    final base = client
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .gte('created_at', startOfDayIso);
+
+    if (!_isGuest) {
+      _subscription = base
+          .eq('customer_id', widget.userId!)
+          .order('id', ascending: false)
+          .listen(
+            _onOrders,
+            onError: (Object e) {
+              debugPrint('Error en banner de pedidos de hoy: $e');
+              if (mounted) setState(() {});
+            },
+          );
+    } else if (_guestOrderIds.isNotEmpty) {
+      _subscription = base
+          .inFilter('id', _guestOrderIds.toList())
+          .order('id', ascending: false)
+          .listen(
+            _onOrders,
+            onError: (Object e) {
+              debugPrint('Error en banner de pedidos de hoy (invitado): $e');
+              if (mounted) setState(() {});
+            },
+          );
+    } else {
+      setState(() => _orders = const []);
+    }
+  }
+
+  void _onOrders(List<Map<String, dynamic>> orders) {
+    if (!mounted) return;
+    setState(() => _orders = orders);
+  }
+
+  String _statusOf(Map<String, dynamic> order) =>
+      (order['status'] ?? '').toString().trim().toLowerCase();
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'en cocina':
+        return 'EN COCINA';
+      case 'en camino':
+        return 'EN CAMINO';
+      case 'listo':
+        return 'LISTO';
+      case 'pendiente':
+        return 'PENDIENTE';
+      case 'entregado':
+        return 'ENTREGADO';
+      case 'cancelado':
+        return 'CANCELADO';
+      default:
+        return status.toUpperCase();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeOrders = _orders.where((ord) {
+      final st = (ord['status'] ?? '').toString().trim().toLowerCase();
+      return st != 'entregado' && st != 'cancelado' && st != 'cancelled';
+    }).toList();
+
+    if (activeOrders.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [_buildActiveBanner(activeOrders)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveBanner(List<Map<String, dynamic>> activeOrders) {
+    final first = activeOrders.first;
+    final firstId = first['id'];
+    final firstStatus = _statusLabel(_statusOf(first));
+
+    final String mainText;
+    final String subtitle;
+    if (activeOrders.length == 1) {
+      mainText = 'Orden #$firstId · $firstStatus';
+      subtitle = 'Toca para seguir tu pedido en tiempo real';
+    } else {
+      mainText = 'Tienes ${activeOrders.length} pedidos hoy';
+      subtitle = activeOrders
+          .map((o) => '#${o['id']} ${_statusLabel(_statusOf(o))}')
+          .join('  ·  ');
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: widget.onOpenOrders,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.orange.shade600, Colors.amber.shade500],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withValues(alpha: 0.28),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.22),
+                  shape: BoxShape.circle,
+                ),
+                child: ScaleTransition(
+                  scale: _pulseScale,
+                  child: const Icon(
+                    Icons.receipt_long,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mainText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Ver pedidos →',
+                  style: TextStyle(
+                    color: Colors.orange.shade900,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
 }

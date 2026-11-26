@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'guest_orders_service.dart';
+import 'customer_order_notification_service.dart';
 import 'order_alert_service.dart';
 
 class OrderBackgroundMonitor with WidgetsBindingObserver {
@@ -43,6 +44,7 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
     }
 
     await OrderAlertService.instance.init();
+    await CustomerOrderNotificationService.instance.init();
     await _configureSession();
     _subscribe();
   }
@@ -260,8 +262,14 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
         final isMine = (_currentUserId != null &&
                 order['customer_id'] == _currentUserId) ||
             _guestOrderIds.contains(id);
+        final previousStatusLower =
+            (previousStatus ?? '').toString().trim().toLowerCase();
 
-        if (isMine && previousStatus != status) {
+        if (isMine && _isFromToday(order) && previousStatusLower != status) {
+          // Notificación nativa del sistema para el cliente.
+          await CustomerOrderNotificationService.instance
+              .notifyStatusChange(order, status);
+
           if (!isDelivery && status == 'listo') {
             OrderAlertService.instance.announceCustom(
               message: '¡Tu orden número $id ya está lista!',
@@ -294,5 +302,18 @@ class OrderBackgroundMonitor with WidgetsBindingObserver {
         _lastOrderStatuses[id] = (order['status'] ?? '').toString();
       }
     }
+  }
+
+  /// Indica si el pedido fue creado hoy (hora local).
+  bool _isFromToday(Map<String, dynamic> order) {
+    final raw = order['created_at']?.toString();
+    if (raw == null || raw.isEmpty) return true;
+
+    final created = DateTime.tryParse(raw)?.toLocal();
+    if (created == null) return true;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    return !created.isBefore(startOfDay);
   }
 }
