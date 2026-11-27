@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/reward_tier.dart';
 import '../../../core/services/order_alert_service.dart';
 import '../../../core/widgets/alert_settings_sheet.dart';
@@ -159,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         return ListTile(
                           isThreeLine: true,
-                          leading: const Icon(Icons.delivery_dining, color: Colors.deepOrange),
+                          leading: const Icon(Icons.delivery_dining, color: AppColors.secondary),
                           title: Text('Orden #$id', style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text(
                             '$date · $type\nTotal: ${Formatters.currency(total)} · Estado: ${st.toString().toUpperCase()}',
@@ -362,10 +363,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final unlockedReward = RewardTier.bestAvailableFor(points);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Información de Perfil'),
-        backgroundColor: Colors.deepOrange,
-        foregroundColor: Colors.white,
+        title: const Text(
+          'Información de Perfil',
+          style: TextStyle(color: AppColors.primary),
+        ),
+        backgroundColor: AppColors.logoBackground,
+        foregroundColor: AppColors.primary,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -375,68 +382,116 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(
               child: CircleAvatar(
                 radius: 45,
-                backgroundColor: Colors.deepOrange.shade100,
+                backgroundColor: AppColors.surface,
                 child: Text(
                   name.isNotEmpty ? name[0].toUpperCase() : 'U',
                   style: const TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
-                    color: Colors.deepOrange,
+                    color: AppColors.secondary,
                   ),
                 ),
               ),
             ),
             const SizedBox(height: 14),
-            Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            Text(_userEmail ?? '', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+            Text(
+              name,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            Text(
+              _userEmail ?? '',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            ),
             const SizedBox(height: 10),
             Chip(
-              label: Text('ROL: $role', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              backgroundColor: Colors.orange.shade50,
+              label: Text(
+                'ROL: $role',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: AppColors.primary,
+                ),
+              ),
+              backgroundColor: AppColors.surface,
+              side: const BorderSide(color: AppColors.border),
             ),
             const SizedBox(height: 20),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              color: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+                side: const BorderSide(color: AppColors.border),
+              ),
               child: ListTile(
                 leading: const Icon(Icons.stars, color: Colors.amber, size: 36),
-                title: const Text('Puntos K\'OTEMAL'),
+                title: const Text(
+                  'Puntos K\'OTEMAL',
+                  style: TextStyle(color: AppColors.primary),
+                ),
                 subtitle: Text(
                   unlockedReward == null
                       ? '$points puntos acumulados · Aún no desbloqueas descuentos'
                       : '$points puntos acumulados · ${Formatters.currency(unlockedReward.discountAmount)} de descuento desbloqueado',
+                  style: const TextStyle(color: AppColors.textSecondary),
                 ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
                 onTap: _showRewardsModal,
               ),
             ),
             const SizedBox(height: 10),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              color: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+                side: const BorderSide(color: AppColors.border),
+              ),
               child: ListTile(
-                leading: const Icon(Icons.phone, color: Colors.deepOrange),
-                title: const Text('Teléfono'),
-                subtitle: Text(phone),
+                leading: const Icon(Icons.phone, color: AppColors.secondary),
+                title: const Text(
+                  'Teléfono',
+                  style: TextStyle(color: AppColors.primary),
+                ),
+                subtitle: Text(
+                  phone,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
               ),
             ),
             const SizedBox(height: 10),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              color: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+                side: const BorderSide(color: AppColors.border),
+              ),
               child: ListTile(
-                leading: const Icon(Icons.receipt_long, color: Colors.blue),
-                title: const Text('Mis Pedidos'),
-                subtitle: const Text('Consultar estado y ver ruta en el mapa'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                leading: const Icon(Icons.receipt_long, color: AppColors.secondary),
+                title: const Text(
+                  'Mis Pedidos',
+                  style: TextStyle(color: AppColors.primary),
+                ),
+                subtitle: const Text(
+                  'Consultar estado y ver ruta en el mapa',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
                 onTap: _showMyOrdersModal,
               ),
             ),
             const SizedBox(height: 10),
 
             Card(
+              color: AppColors.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
+                side: const BorderSide(color: AppColors.border),
               ),
               child: ListenableBuilder(
                 listenable: OrderAlertService.instance,
@@ -445,15 +500,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   return ListTile(
                     leading: const Icon(
                       Icons.notifications_active_outlined,
-                      color: Colors.deepOrange,
+                      color: AppColors.secondary,
                     ),
-                    title: const Text('Alertas y Sonidos'),
+                    title: const Text(
+                      'Alertas y Sonidos',
+                      style: TextStyle(color: AppColors.primary),
+                    ),
                     subtitle: Text(
                       _alertStatusLabel(service),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.textSecondary),
                     ),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
                     onTap: () => showAlertSettingsSheet(context),
                   );
                 },
@@ -463,7 +522,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Tarjeta de actualización, completamente oculta en la Web
             if (!kIsWeb) ...[
-              const AppUpdateCard(),
+              const AppUpdateCard(
+                backgroundColor: AppColors.surface,
+                accentColor: AppColors.secondary,
+              ),
               const SizedBox(height: 20),
             ],
 
@@ -472,8 +534,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 48,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
+                  foregroundColor: AppColors.secondary,
+                  side: const BorderSide(color: AppColors.secondary),
                 ),
                 onPressed: _signOut,
                 icon: const Icon(Icons.logout),

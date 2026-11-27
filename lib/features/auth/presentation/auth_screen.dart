@@ -239,7 +239,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   'assets/images/logo.png',
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.stars_rounded, size: 60, color: Colors.deepOrange);
+                    return const Icon(Icons.stars_rounded, size: 60, color: Color(0xFFC25229));
                   },
                 ),
               ),

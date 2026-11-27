@@ -45,7 +45,10 @@ class KotemalApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+          secondary: AppColors.secondary,
+        ),
         scaffoldBackgroundColor: AppColors.background,
       ),
       home: const MenuScreen(),

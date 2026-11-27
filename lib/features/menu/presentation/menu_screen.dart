@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../data/menu_provider.dart';
 import '../domain/product.dart';
 import '../../admin/presentation/admin_hub_screen.dart';
@@ -292,14 +293,14 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
 
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Colors.deepOrange.shade100,
+                            backgroundColor: AppColors.surface,
                             child: Icon(
                               type == 'domicilio'
                                   ? Icons.delivery_dining
                                   : (type == 'local'
                                       ? Icons.table_restaurant
                                       : Icons.takeout_dining),
-                              color: Colors.deepOrange,
+                              color: AppColors.secondary,
                             ),
                           ),
                           title: Text(
@@ -499,9 +500,14 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           titleSpacing: 4,
           centerTitle: false,
+          backgroundColor: AppColors.logoBackground,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: AppColors.primary,
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -512,7 +518,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   width: 36,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.local_cafe),
+                      const Icon(Icons.local_cafe, color: AppColors.primary),
                 ),
               ),
               const SizedBox(width: 10),
@@ -521,7 +527,10 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   "K'OTEMAL",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
             ],
@@ -532,6 +541,8 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                 padding: EdgeInsets.only(right: isCompact ? 4 : 8),
                 child: FilledButton.tonalIcon(
                   style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.secondary,
+                    foregroundColor: Colors.white,
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.symmetric(
                       horizontal: isCompact ? 10 : 12,
@@ -591,9 +602,12 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
               },
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
-            tabs: [
+            indicatorColor: AppColors.secondary,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            tabs: const [
               Tab(icon: Icon(Icons.lunch_dining), text: 'Comidas'),
               Tab(icon: Icon(Icons.local_cafe), text: 'Bebidas'),
               Tab(icon: Icon(Icons.cake), text: 'Postres'),
@@ -678,7 +692,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   if (cartCount > 0) ...[
                     FloatingActionButton.extended(
                       heroTag: 'btn_cart',
-                      backgroundColor: Colors.deepOrange,
+                      backgroundColor: AppColors.secondary,
                       foregroundColor: Colors.white,
                       onPressed: () async {
                         await Navigator.push(
@@ -715,7 +729,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
             : (cartCount > 0
                 ? FloatingActionButton.extended(
                     heroTag: 'btn_cart',
-                    backgroundColor: Colors.deepOrange,
+                    backgroundColor: AppColors.secondary,
                     foregroundColor: Colors.white,
                     onPressed: () async {
                       await Navigator.push(
@@ -824,6 +838,7 @@ class _ProductList extends ConsumerWidget {
         return Opacity(
           opacity: isAvailable ? 1.0 : 0.6,
           child: Card(
+            color: AppColors.surface,
             elevation: isSelected ? 3 : 1,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -831,8 +846,8 @@ class _ProductList extends ConsumerWidget {
                 color: !isAvailable
                     ? Colors.grey.shade400
                     : (isSelected
-                        ? Colors.deepOrange.shade400
-                        : Colors.grey.shade200),
+                        ? AppColors.secondary
+                        : AppColors.border),
                 width: isSelected ? 1.5 : 1,
               ),
             ),
@@ -907,7 +922,7 @@ class _ProductList extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.deepOrange,
+                                color: AppColors.secondary,
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: const [
                                   BoxShadow(
@@ -1045,11 +1060,11 @@ class _ProductList extends ConsumerWidget {
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: isSelected
-                                              ? Colors.deepOrange
-                                              : Colors.orange.shade50,
+                                              ? AppColors.secondary
+                                              : AppColors.surface,
                                           foregroundColor: isSelected
                                               ? Colors.white
-                                              : Colors.deepOrange,
+                                              : AppColors.secondary,
                                           elevation: isSelected ? 2 : 0,
                                           shape: RoundedRectangleBorder(
                                             borderRadius:
@@ -1107,14 +1122,14 @@ class _ProductList extends ConsumerWidget {
     return Container(
       width: 105,
       height: 105,
-      color: Colors.orange.shade100,
+      color: AppColors.surface,
       alignment: Alignment.center,
       child: Text(
         item.name.isNotEmpty ? item.name.substring(0, 1).toUpperCase() : '?',
         style: const TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.bold,
-          color: Colors.deepOrange,
+          color: AppColors.secondary,
         ),
       ),
     );
