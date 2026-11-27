@@ -430,12 +430,85 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     );
   }
 
+  /// Píldora suave para agrupar información secundaria de la tarjeta.
+  Widget _buildInfoPill({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color border,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.2,
+              color: foreground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Distingue visualmente entre cliente registrado y cliente invitado.
+  Widget _buildCustomerBadge({required bool isGuest}) {
+    final foreground = isGuest
+        ? const Color(0xFF757575)
+        : const Color(0xFF9A6B1F);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isGuest ? const Color(0xFFF4F4F4) : const Color(0xFFFBF3DE),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isGuest ? const Color(0xFFE0E0E0) : const Color(0xFFEBD9AE),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isGuest ? Icons.person_outline : Icons.star_rounded,
+            size: 13,
+            color: foreground,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            isGuest ? 'Invitado' : 'Suma puntos',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: foreground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOrderCard(Map<String, dynamic> order) {
     final orderId = order['id'] as int;
     final status = (order['status'] ?? 'pendiente') as String;
-    final total = (order['total'] ?? 0.0).toString();
-    final phone = order['customer_phone'] ?? 'Sin nÃºmero';
-    final notes = order['delivery_notes'] ?? 'Sin referencias';
+    final rawTotal = order['total'];
+    final total = rawTotal is num
+        ? rawTotal.toDouble()
+        : double.tryParse(rawTotal?.toString() ?? '') ?? 0.0;
+    final phone = (order['customer_phone'] ?? 'Sin número').toString();
+    final notes = (order['delivery_notes'] ?? 'Sin referencias').toString();
     final rawCustomerName = (order['customer_name'] ?? '').toString().trim();
     final customerName =
         rawCustomerName.isEmpty ? 'Cliente sin nombre' : rawCustomerName;
@@ -453,109 +526,177 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
             ? 'Transferencia'
             : 'Sin mÃ©todo';
 
+    final hasRoute = deliveryType == 'domicilio' && lat != null && lng != null;
+    final modeLabel = deliveryType == 'local'
+        ? (tableNumber.isEmpty ? 'MESA' : 'MESA $tableNumber')
+        : deliveryType == 'para_llevar'
+            ? 'PARA LLEVAR'
+            : 'A DOMICILIO';
+    final modeIcon = deliveryType == 'local'
+        ? Icons.table_restaurant
+        : deliveryType == 'para_llevar'
+            ? Icons.takeout_dining
+            : Icons.delivery_dining;
+    final hasNotes = notes.isNotEmpty && notes != 'Sin referencias';
+
+    // Selector de estado tipo píldora, usado en el pie de la tarjeta.
+    final statusSelector = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3ECE4),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD5C8BC)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: status,
+          isDense: true,
+          borderRadius: BorderRadius.circular(16),
+          icon: const Icon(
+            Icons.expand_more,
+            size: 18,
+            color: AppColors.primary,
+          ),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+          items: const [
+            DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
+            DropdownMenuItem(value: 'en cocina', child: Text('En cocina')),
+            DropdownMenuItem(value: 'listo', child: Text('Listo')),
+            DropdownMenuItem(value: 'en camino', child: Text('En camino')),
+            DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
+            DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),
+          ],
+          onChanged: (val) {
+            if (val == null || val == status) return;
+
+            if (val == 'entregado' && paymentStatus != 'pagado') {
+              // No se permite entregar sin cobrar: primero se elige el método.
+              _showPaymentMethodSheet(orderId);
+            } else {
+              _updateStatus(orderId, val);
+            }
+          },
+        ),
+      ),
+    );
+
     return Card(
-      elevation: 3,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFE6DDD4)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         onTap: () => _showOrderDetailsModal(orderId, order), // Tocar la tarjeta abre el detalle de productos
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Orden #$orderId',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF6EFEA),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Ver detalle ›',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF8C6D62),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        'Orden #$orderId',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(status).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _getStatusColor(status).withValues(alpha: 0.6),
+                          ),
+                        ),
+                        child: Text(
+                          status.toUpperCase(),
+                          style: TextStyle(
+                            color: _getStatusColor(status),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.touch_app, size: 16, color: Colors.grey),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Q${total.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(status).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _getStatusColor(status)),
-                    ),
-                    child: Text(
-                      status.toUpperCase(),
-                      style: TextStyle(
-                        color: _getStatusColor(status),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
                 ],
               ),
-              const Divider(),
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(
-                    deliveryType == 'local'
-                        ? Icons.table_restaurant
-                        : deliveryType == 'para_llevar'
-                            ? Icons.takeout_dining
-                            : Icons.delivery_dining,
-                    size: 18,
-                    color: AppColors.secondary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    deliveryType == 'local'
-                        ? 'MESA: $tableNumber (Consumo en Local)'
-                        : deliveryType == 'para_llevar'
-                            ? 'PARA LLEVAR (Mostrador)'
-                            : 'A DOMICILIO (Delivery)',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  _buildInfoPill(
+                    icon: modeIcon,
+                    label: modeLabel,
+                    background: const Color(0xFFFBF1EC),
+                    border: const Color(0xFFEBD5C8),
+                    foreground: AppColors.secondary,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-
-              // TelÃ©fono clickeable para llamada o WhatsApp
-              InkWell(
-                onTap: () => _showContactOptions(phone),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.phone_in_talk, size: 16, color: Colors.blue),
-                    const SizedBox(width: 6),
-                    Text(
-                      phone,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.blue,
-                        decoration: TextDecoration.underline,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chat, size: 16, color: Colors.green),
-                  ],
-                ),
-              ),
-
-              if (notes.isNotEmpty && notes != 'Sin referencias') ...[
-                const SizedBox(height: 6),
-                Text('Detalles / Referencia: $notes', style: const TextStyle(color: Colors.black87)),
-              ],
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Icon(
                     isGuest ? Icons.person_outline : Icons.person,
-                    size: 18,
-                    color: isGuest ? Colors.grey : Colors.amber.shade800,
+                    size: 16,
+                    color: isGuest
+                        ? const Color(0xFF9E9E9E)
+                        : AppColors.secondary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -563,36 +704,98 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
                       customerName,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
-                  Text(
-                    isGuest ? 'Cliente Invitado' : 'Cliente Registrado (Suma Puntos)',
-                    style: TextStyle(
-                      color: isGuest ? Colors.grey.shade700 : Colors.amber.shade900,
-                      fontSize: 11,
-                    ),
-                  ),
+                  const SizedBox(width: 6),
+                  _buildCustomerBadge(isGuest: isGuest),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                'Total: Q$total',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
+
+              // Teléfono clickeable para llamada o WhatsApp
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _showContactOptions(phone),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F8FB),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFDCE7F0)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.phone_in_talk,
+                        size: 15,
+                        color: Color(0xFF2F6690),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        phone,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF2F6690),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.chat_bubble_outline,
+                        size: 15,
+                        color: Color(0xFF3E9C5C),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
+
+              if (hasNotes) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.sticky_note_2_outlined,
+                      size: 15,
+                      color: Color(0xFF8C6D62),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Referencia: $notes',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFE6DDD4),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Icon(
                     isPaid ? Icons.verified : Icons.payments_outlined,
                     size: 18,
-                    color: isPaid ? Colors.green : Colors.orange,
+                    color: isPaid
+                        ? Colors.green.shade700
+                        : Colors.orange.shade800,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -601,59 +804,57 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: isPaid ? Colors.green : Colors.orange,
+                        color: isPaid
+                            ? Colors.green.shade700
+                            : Colors.orange.shade800,
                       ),
                     ),
                   ),
                   if (_isAdmin && !isPaid)
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.green,
-                        side: const BorderSide(color: Colors.green),
+                        foregroundColor: Colors.green.shade700,
+                        side: BorderSide(color: Colors.green.shade400),
                         visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       onPressed: () => _showPaymentMethodSheet(orderId),
-                      icon: const Icon(Icons.price_check, size: 18),
+                      icon: const Icon(Icons.price_check, size: 16),
                       label: const Text('Marcar Pagado'),
                     ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (deliveryType == 'domicilio' && lat != null && lng != null)
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade700,
-                        foregroundColor: Colors.white,
+                  if (hasRoute) ...[
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2F6690),
+                        backgroundColor: const Color(0xFFF4F8FB),
+                        side: const BorderSide(color: Color(0xFFDCE7F0)),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       onPressed: () => _openNavigation(lat, lng),
-                      icon: const Icon(Icons.directions, size: 18),
+                      icon: const Icon(Icons.map_outlined, size: 16),
                       label: const Text('Ruta Maps'),
                     ),
-                  const Spacer(),
-                  DropdownButton<String>(
-                    value: status,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
-                      DropdownMenuItem(value: 'en cocina', child: Text('En cocina')),
-                      DropdownMenuItem(value: 'listo', child: Text('Listo')),
-                      DropdownMenuItem(value: 'en camino', child: Text('En camino')),
-                      DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
-                      DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),
-                    ],
-                    onChanged: (val) {
-                      if (val == null || val == status) return;
-
-                      if (val == 'entregado' && paymentStatus != 'pagado') {
-                        // No se permite entregar sin cobrar: primero se elige el mÃ©todo.
-                        _showPaymentMethodSheet(orderId);
-                      } else {
-                        _updateStatus(orderId, val);
-                      }
-                    },
-                  ),
+                    const Spacer(),
+                  ],
+                  statusSelector,
                 ],
               ),
             ],
