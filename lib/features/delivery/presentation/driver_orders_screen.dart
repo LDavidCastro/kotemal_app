@@ -569,10 +569,13 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF3ECE4),
         appBar: AppBar(
           title: const Text('Rutas y Entregas'),
-          backgroundColor: Colors.blue.shade800,
+          backgroundColor: const Color(0xFF4B2618),
           foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
           actions: [
             ListenableBuilder(
               listenable: OrderAlertService.instance,
@@ -717,6 +720,72 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
     return (status ?? '').toString().trim().toLowerCase();
   }
 
+  /// Badge tipo píldora suave: fondo tintado, borde y texto del color del estado.
+  Widget _buildSoftBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.2,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Encabezado de sección con ícono dentro de un cuadro suave de la paleta.
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.4,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOrderList(
     List<Map<String, dynamic>> orders,
     String? currentDriverId, {
@@ -746,12 +815,18 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       final ord = orders[index];
       final orderId = ord['id'] as int;
       final status = _normalizeStatus(ord['status']);
-      final phone = ord['customer_phone'] ?? 'Sin número';
+      final phone = (ord['customer_phone'] ?? 'Sin número').toString();
       final rawCustomerName = (ord['customer_name'] ?? '').toString().trim();
       final customerName =
           rawCustomerName.isEmpty ? 'Sin nombre' : rawCustomerName;
-      final notes = ord['delivery_notes'] ?? 'Sin referencias';
-      final total = ord['total']?.toString() ?? '0.0';
+      final notes = (ord['delivery_notes'] ?? 'Sin referencias').toString();
+      final trimmedNotes = notes.trim();
+      final hasNotes =
+          trimmedNotes.isNotEmpty && trimmedNotes != 'Sin referencias';
+      final rawTotal = ord['total'];
+      final total = rawTotal is num
+          ? rawTotal.toDouble()
+          : double.tryParse(rawTotal?.toString() ?? '') ?? 0.0;
       final lat = ord['delivery_latitude'] as double?;
       final lng = ord['delivery_longitude'] as double?;
       final assignedId = ord['delivery_driver_id'];
@@ -767,6 +842,46 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
               ? 'Pagado (Transferencia)'
               : 'Pagado';
 
+      final statusColor = switch (status) {
+        'pendiente' => Colors.orange.shade800,
+        'en cocina' => Colors.blue.shade800,
+        'listo' => Colors.teal.shade700,
+        'en camino' => AppColors.secondary,
+        'entregado' => Colors.green.shade700,
+        'cancelado' => Colors.red.shade700,
+        _ => Colors.grey.shade700,
+      };
+      final statusIcon = switch (status) {
+        'pendiente' => Icons.receipt_long,
+        'en cocina' => Icons.soup_kitchen,
+        'listo' => Icons.restaurant,
+        'en camino' => Icons.two_wheeler,
+        'entregado' => Icons.check_circle,
+        'cancelado' => Icons.cancel,
+        _ => Icons.info_outline,
+      };
+      final statusLabel = status == 'listo'
+          ? 'LISTO PARA RECOGER'
+          : status.toUpperCase();
+      final availabilityColor = !hasDriver
+          ? AppColors.secondary
+          : isMyOrder
+              ? Colors.green.shade700
+              : Colors.grey.shade700;
+      final availabilityIcon = !hasDriver
+          ? Icons.inventory_2_outlined
+          : isMyOrder
+              ? Icons.check_circle
+              : Icons.person_outline;
+      final availabilityLabel = !hasDriver
+          ? 'DISPONIBLE'
+          : isMyOrder
+              ? 'SELECCIONADO / EN CAMINO'
+              : 'Asignado a repartidor';
+      final cardBorderColor = !isDeliveredView && !hasDriver
+          ? AppColors.secondary.withValues(alpha: 0.45)
+          : const Color(0xFFE2D8CE);
+
       String? deliveredAtLabel;
       if (showDeliveryDate) {
         final raw = ord['updated_at'] ?? ord['created_at'];
@@ -777,214 +892,221 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
       }
 
       return Card(
-        elevation: 3,
-        color: isDeliveredView
-            ? null
-            : hasDriver
-                ? Colors.green.shade50.withValues(alpha: 0.35)
-                : Colors.red.shade50.withValues(alpha: 0.35),
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        color: const Color(0xFFFAF6F1),
+        margin: showSectionHeaders
+            ? const EdgeInsets.only(bottom: 12)
+            : EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: isDeliveredView
-              ? BorderSide.none
-              : BorderSide(
-                  color: hasDriver
-                      ? Colors.green.shade500
-                      : Colors.red.shade400,
-                  width: 2,
-                ),
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cardBorderColor),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => _showContactOptions(phone, customerName),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      child: Text(
-                        'Orden #$orderId',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  Expanded(
+                    child: Text(
+                      'Orden #$orderId',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4B2618),
                       ),
                     ),
                   ),
-                  Chip(
-                    label: Text(
-                      status == 'listo'
-                          ? 'LISTO PARA RECOGER'
-                          : status.toUpperCase(),
-                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Q${total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4B2618),
                     ),
-                    backgroundColor: status == 'listo'
-                        ? (isMyOrder ? Colors.amber.shade700 : Colors.teal)
-                        : isDeliveredView
-                            ? Colors.green
-                            : (isMyOrder ? Colors.blue.shade700 : Colors.orange),
                   ),
                 ],
               ),
-              if (!isDeliveredView) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: hasDriver
-                          ? Colors.green.shade600
-                          : Colors.red.shade600,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          hasDriver
-                              ? Icons.check_circle
-                              : Icons.person_off,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          hasDriver
-                              ? (isMyOrder
-                                  ? 'SELECCIONADO / EN CAMINO'
-                                  : 'Asignado a repartidor')
-                              : 'DISPONIBLE',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildSoftBadge(
+                    icon: statusIcon,
+                    label: statusLabel,
+                    color: statusColor,
                   ),
-                ),
-              ],
-              if (deliveredAtLabel != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.access_time,
-                        size: 14, color: Colors.grey.shade700),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Entregado: $deliveredAtLabel',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade800,
+                  if (!isDeliveredView)
+                    _buildSoftBadge(
+                      icon: availabilityIcon,
+                      label: availabilityLabel,
+                      color: availabilityColor,
+                    ),
+                  if (deliveredAtLabel != null)
+                    _buildSoftBadge(
+                      icon: Icons.access_time,
+                      label: 'Entregado: $deliveredAtLabel',
+                      color: Colors.grey.shade700,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: Color(0xFF8C6D62),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      customerName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
+                        color: Color(0xFF4B2618),
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
               const SizedBox(height: 6),
-              Text('Cliente: $customerName',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
               InkWell(
+                borderRadius: BorderRadius.circular(20),
                 onTap: () => _showContactOptions(phone, customerName),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3ECE4),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE2D8CE)),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.phone_in_talk,
-                        size: 16,
-                        color: Colors.blue,
+                        size: 15,
+                        color: Color(0xFF4B2618),
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Teléfono: $phone',
+                        phone,
                         style: const TextStyle(
-                          color: Colors.blue,
-                          decoration: TextDecoration.underline,
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
+                          color: Color(0xFF4B2618),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      const Icon(Icons.chat, size: 16, color: Colors.green),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.chat_bubble_outline,
+                        size: 15,
+                        color: Color(0xFF2E7D4F),
+                      ),
                     ],
                   ),
                 ),
               ),
-              Text('Referencia: $notes'),
-              Text('Total: Q$total',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: (isPaid ? Colors.green : Colors.orange).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isPaid ? Colors.green : Colors.orange),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              if (hasNotes) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      isPaid ? Icons.verified : Icons.payments_outlined,
+                    const Icon(
+                      Icons.sticky_note_2_outlined,
                       size: 15,
-                      color: isPaid ? Colors.green : Colors.orange,
+                      color: Color(0xFF8C6D62),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      isPaid ? paymentLabel : 'Pago pendiente',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isPaid ? Colors.green.shade800 : Colors.orange.shade900,
+                    Expanded(
+                      child: Text(
+                        'Referencia: $trimmedNotes',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF616161),
+                        ),
                       ),
                     ),
                   ],
                 ),
+              ],
+              const SizedBox(height: 10),
+              _buildSoftBadge(
+                icon: isPaid ? Icons.verified : Icons.payments_outlined,
+                label: isPaid ? paymentLabel : 'Pago pendiente',
+                color: isPaid ? Colors.green.shade700 : Colors.orange.shade800,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
+              const Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFE6DDD4),
+              ),
+              const SizedBox(height: 10),
               if (!isDeliveredView) ...[
                 Row(
                   children: [
                     if (lat != null && lng != null)
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey.shade800,
-                          foregroundColor: Colors.white,
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF4B2618),
+                          side: const BorderSide(color: Color(0xFF4B2618)),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         onPressed: () => _openMaps(lat, lng),
-                        icon: const Icon(Icons.directions, size: 16),
+                        icon: const Icon(Icons.map_outlined, size: 16),
                         label: const Text('Maps'),
                       ),
                     const Spacer(),
                     if (!hasDriver)
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red.shade600,
+                          backgroundColor: AppColors.secondary,
                           foregroundColor: Colors.white,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         onPressed: () => _claimOrder(orderId),
-                        icon: const Icon(Icons.pan_tool_alt),
+                        icon: const Icon(Icons.pan_tool_alt, size: 16),
                         label: const Text('Tomar Pedido'),
                       )
                     else if (isMyOrder) ...[
                       OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
+                          foregroundColor: AppColors.error,
+                          side: BorderSide(
+                            color: AppColors.error.withValues(alpha: 0.5),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
                         ),
                         onPressed: () => _releaseOrder(orderId),
                         child: const Text('Soltar'),
@@ -995,28 +1117,53 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green.shade700,
                             foregroundColor: Colors.white,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           onPressed: () => _confirmCompleteDelivery(orderId),
-                          icon: const Icon(Icons.check_circle),
+                          icon: const Icon(Icons.check_circle, size: 16),
                           label: const Text('Entregado'),
                         )
                       else
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: status == 'listo'
-                                ? Colors.amber.shade700
-                                : Colors.blue.shade700,
+                                ? Colors.green.shade700
+                                : AppColors.primary,
                             foregroundColor: Colors.white,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           onPressed: () => _startDelivery(orderId),
-                          icon: const Icon(Icons.two_wheeler),
+                          icon: const Icon(Icons.two_wheeler, size: 16),
                           label: const Text('Iniciar Entrega'),
                         )
                     ] else if (isOtherDriver) ...[
                       if (_isAdmin) ...[
                         OutlinedButton(
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
+                            foregroundColor: AppColors.error,
+                            side: BorderSide(
+                              color: AppColors.error.withValues(alpha: 0.5),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
                           ),
                           onPressed: () => _releaseOrder(orderId),
                           child: const Text('Soltar'),
@@ -1026,9 +1173,18 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green.shade700,
                             foregroundColor: Colors.white,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           onPressed: () => _confirmCompleteDelivery(orderId),
-                          icon: const Icon(Icons.check_circle),
+                          icon: const Icon(Icons.check_circle, size: 16),
                           label: const Text('Entregado'),
                         ),
                       ] else
@@ -1036,21 +1192,40 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                           'Asignado a otro repartidor',
                           style: TextStyle(
                             fontStyle: FontStyle.italic,
-                            color: Colors.grey,
+                            color: Color(0xFF757575),
                           ),
                         ),
                     ],
                   ],
                 ),
                 if (_activeOrderIds.contains(orderId))
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Row(
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.satellite_alt, size: 16, color: Colors.green),
+                        Icon(
+                          Icons.satellite_alt,
+                          size: 14,
+                          color: Color(0xFF2E7D4F),
+                        ),
                         SizedBox(width: 6),
-                        Text('Compartiendo ubicación con el cliente...',
-                            style: TextStyle(fontSize: 12, color: Colors.green)),
+                        Text(
+                          'Compartiendo ubicación con el cliente...',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2E7D4F),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1059,9 +1234,21 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
-                    style: TextButton.styleFrom(foregroundColor: Colors.orange.shade800),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.secondary,
+                      backgroundColor:
+                          AppColors.secondary.withValues(alpha: 0.08),
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     onPressed: () => _revertToOnTheWay(orderId),
-                    icon: const Icon(Icons.undo, size: 18),
+                    icon: const Icon(Icons.undo, size: 16),
                     label: const Text('¿Entregado por error? Reactivar'),
                   ),
                 ),
@@ -1082,22 +1269,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
 
       if (selected.isNotEmpty) {
         listChildren.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.local_shipping, color: Colors.blue.shade800),
-                const SizedBox(width: 8),
-                Text(
-                  'SELECCIONADO / EN CAMINO',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
-                  ),
-                ),
-              ],
-            ),
+          _buildSectionHeader(
+            icon: Icons.local_shipping,
+            label: 'SELECCIONADO / EN CAMINO',
+            color: AppColors.primary,
           ),
         );
         for (final order in selected) {
@@ -1111,22 +1286,10 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
           listChildren.add(const SizedBox(height: 20));
         }
         listChildren.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.inventory_2, color: Colors.orange.shade800),
-                const SizedBox(width: 8),
-                Text(
-                  'DISPONIBLES',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade800,
-                  ),
-                ),
-              ],
-            ),
+          _buildSectionHeader(
+            icon: Icons.inventory_2,
+            label: 'DISPONIBLES',
+            color: AppColors.secondary,
           ),
         );
         for (final order in available) {
@@ -1772,8 +1935,10 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mapa de Ruta'),
-        backgroundColor: Colors.blue.shade800,
+        backgroundColor: const Color(0xFF4B2618),
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
       body: Stack(
         children: [
