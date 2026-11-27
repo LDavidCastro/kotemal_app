@@ -170,8 +170,12 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFE9E1D9),
       appBar: AppBar(
         title: Text(_isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'),
+        backgroundColor: const Color(0xFFE9E1D9),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -208,6 +212,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                       label: Text(acc.label),
+                      backgroundColor: Colors.white,
                       onPressed: () => _selectSavedAccount(acc),
                       onDeleted: () async {
                         await AccountManagerService.removeAccount(acc.email);
@@ -224,12 +229,14 @@ class _AuthScreenState extends State<AuthScreen> {
             Container(
               height: 120,
               alignment: Alignment.center,
-              child: Image.asset(
-                'assets/images/logo.png',
-                fit: BoxFit.contain, // Evita que la imagen se estire en web o dispositivos móviles
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(Icons.stars_rounded, size: 60, color: Colors.deepOrange);
-                },
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.stars_rounded, size: 60, color: Colors.deepOrange);
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -248,6 +255,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   labelText: 'Nombre completo',
                   prefixIcon: Icon(Icons.person),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
               const SizedBox(height: 12),
@@ -258,6 +267,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   labelText: 'Teléfono',
                   prefixIcon: Icon(Icons.phone),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
               const SizedBox(height: 12),
@@ -269,6 +280,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 labelText: 'Correo Electrónico',
                 prefixIcon: Icon(Icons.email),
                 border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
               ),
             ),
             const SizedBox(height: 12),
@@ -286,6 +299,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
                 border: const OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
               ),
             ),
             if (_isLogin) ...[
@@ -469,6 +484,8 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                   labelText: 'Correo electrónico',
                   prefixIcon: Icon(Icons.email),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
             ] else ...[
@@ -488,6 +505,8 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                   labelText: 'Código de 6 dígitos',
                   prefixIcon: Icon(Icons.pin),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
               const SizedBox(height: 8),
@@ -509,6 +528,8 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                     ),
                   ),
                   border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
             ],
