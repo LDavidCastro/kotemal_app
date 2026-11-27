@@ -306,93 +306,99 @@ class _ProductCustomizationDialogState
     return SizedBox(
       height: 185,
       width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: hasImage
-                ? SizedBox.expand(
-                    key: ValueKey(activeImageUrl),
-                    child: GestureDetector(
-                      onTap: _openImageViewer,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: hasImage ? _openImageViewer : null,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: hasImage
+                  ? SizedBox.expand(
+                      key: ValueKey(activeImageUrl),
                       child: Image.network(
                         stripImageFocus(activeImageUrl),
                         fit: BoxFit.cover,
                         alignment: parseImageFocus(activeImageUrl),
                         errorBuilder: (_, _, _) => _dialogPlaceholder(),
                       ),
+                    )
+                  : SizedBox.expand(
+                      key: const ValueKey('placeholder'),
+                      child: _dialogPlaceholder(),
                     ),
-                  )
-                : SizedBox.expand(
-                    key: const ValueKey('placeholder'),
-                    child: _dialogPlaceholder(),
+            ),
+            IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.35),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.55),
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
                   ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.35),
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.55),
-                ],
-                stops: const [0.0, 0.45, 1.0],
+                ),
               ),
             ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 12,
-            child: Row(
-              children: [
-                if (hasImage)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: Row(
+                children: [
+                  if (hasImage)
+                    CircleAvatar(
+                      backgroundColor: Colors.black45,
+                      radius: 18,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.zoom_in,
+                            color: Colors.white, size: 20),
+                        onPressed: _openImageViewer,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
                   CircleAvatar(
                     backgroundColor: Colors.black45,
                     radius: 18,
                     child: IconButton(
                       padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.zoom_in,
+                      icon: const Icon(Icons.close,
                           color: Colors.white, size: 20),
-                      onPressed: _openImageViewer,
+                      onPressed: () => Navigator.pop(context),
                     ),
                   ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.black45,
-                  radius: 18,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon:
-                        const Icon(Icons.close, color: Colors.white, size: 20),
-                    onPressed: () => Navigator.pop(context),
+                ],
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 16,
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Base: Q${basePrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            bottom: 16,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Base: Q${basePrice.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

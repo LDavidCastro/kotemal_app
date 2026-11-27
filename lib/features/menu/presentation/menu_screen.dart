@@ -14,7 +14,6 @@ import '../../auth/presentation/profile_screen.dart';
 import '../../cart/presentation/cart_controller.dart';
 import '../../cart/presentation/cart_screen.dart';
 import 'product_customization_dialog.dart';
-import 'widgets/product_image_viewer.dart';
 import '../../../core/utils/image_focus_helper.dart';
 
 import '../../../core/models/reward_tier.dart';
@@ -876,41 +875,13 @@ class _ProductList extends ConsumerWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                              ? GestureDetector(
-                                  onTap: () => showProductImageViewer(
-                                    context,
-                                    imageUrl: item.imageUrl!,
-                                    title: item.name,
-                                  ),
-                                  child: Stack(
-                                    children: [
-                                      Image.network(
-                                        stripImageFocus(item.imageUrl!),
-                                        width: 105,
-                                        height: 105,
-                                        fit: BoxFit.cover,
-                                        alignment:
-                                            parseImageFocus(item.imageUrl),
-                                        errorBuilder: (_, _, _) => _defaultAvatar(item),
-                                      ),
-                                      Positioned(
-                                        bottom: 6,
-                                        right: 6,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black45,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(
-                                            Icons.zoom_in,
-                                            size: 16,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                              ? Image.network(
+                                  stripImageFocus(item.imageUrl!),
+                                  width: 105,
+                                  height: 105,
+                                  fit: BoxFit.cover,
+                                  alignment: parseImageFocus(item.imageUrl),
+                                  errorBuilder: (_, _, _) => _defaultAvatar(item),
                                 )
                               : _defaultAvatar(item),
                         ),

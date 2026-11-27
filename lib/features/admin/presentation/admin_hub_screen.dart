@@ -92,20 +92,6 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
     }
   }
 
-  Color get _roleColor {
-    switch (_role) {
-      case 'admin':
-        return Colors.purple;
-      case 'cocinero':
-      case 'cocina':
-        return Colors.deepOrange;
-      case 'repartidor':
-        return Colors.blue.shade700;
-      default:
-        return Colors.grey;
-    }
-  }
-
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Buenos días';
@@ -121,7 +107,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
           description:
               'Recibe comandas en tiempo real, cambia estados a listo y gestiona tiempos.',
           icon: Icons.soup_kitchen,
-          color: Colors.deepOrange,
+          color: const Color(0xFFC25229),
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const OrdersDashboardScreen()),
@@ -133,7 +119,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
           description:
               'Toma pedidos a domicilio, comparte GPS en vivo y marca entregas.',
           icon: Icons.two_wheeler,
-          color: Colors.blue.shade700,
+          color: const Color(0xFF4B2618),
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -147,7 +133,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
           description:
               'Revisa ventas del día en efectivo y transferencia, y registra el arqueo.',
           icon: Icons.point_of_sale,
-          color: Colors.teal.shade700,
+          color: const Color(0xFF2E7D4F),
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const CashClosingScreen()),
@@ -209,15 +195,17 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
     final options = _buildOptions(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F9),
+      backgroundColor: const Color(0xFFF3ECE4),
       appBar: AppBar(
         title: const Text("Panel de Control"),
         centerTitle: true,
-        backgroundColor: const Color(0xFFF7F7F9),
+        backgroundColor: const Color(0xFFE9E1D9),
+        foregroundColor: const Color(0xFF4B2618),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: const IconThemeData(color: Color(0xFF4B2618)),
         titleTextStyle: const TextStyle(
-          color: Colors.black87,
+          color: Color(0xFF4B2618),
           fontSize: 18,
           fontWeight: FontWeight.bold,
         ),
@@ -239,7 +227,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                        color: Color(0xFF4B2618),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -249,16 +237,17 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _roleColor.withValues(alpha: 0.12),
+                        color: const Color(0xFFC25229).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: _roleColor.withValues(alpha: 0.4),
+                          color:
+                              const Color(0xFFC25229).withValues(alpha: 0.35),
                         ),
                       ),
                       child: Text(
                         _roleLabel,
-                        style: TextStyle(
-                          color: _roleColor,
+                        style: const TextStyle(
+                          color: Color(0xFFC25229),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -274,7 +263,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                     child: Text(
                       'No tienes accesos operativos asignados.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black54),
+                      style: TextStyle(color: Color(0xFF6E574F)),
                     ),
                   ),
                 )
@@ -326,13 +315,16 @@ class _HubCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Colors.white,
-      elevation: 1.5,
-      shadowColor: Colors.black.withValues(alpha: 0.08),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: const Color(0xFFFAF6F1),
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE2D8CE)),
+      ),
       margin: EdgeInsets.zero,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         onTap: option.onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -359,7 +351,7 @@ class _HubCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                        color: Color(0xFF4B2618),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -367,16 +359,16 @@ class _HubCard extends StatelessWidget {
                       option.description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12.5,
-                        color: Colors.grey.shade600,
+                        color: Color(0xFF6E574F),
                         height: 1.3,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Colors.black38),
+              const Icon(Icons.chevron_right, color: Color(0xFF8C6D62)),
             ],
           ),
         ),
