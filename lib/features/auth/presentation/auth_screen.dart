@@ -172,8 +172,12 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFE9E1D9),
       appBar: AppBar(
-        title: Text(_isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'),
+        title: Text(
+          _isLogin ? 'Iniciar Sesión' : 'Crear Cuenta',
+          style: const TextStyle(color: Color(0xFF4B2618)),
+        ),
         backgroundColor: const Color(0xFFE9E1D9),
+        foregroundColor: const Color(0xFF4B2618),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
       ),
@@ -190,7 +194,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade700,
+                    color: Color(0xFF4B2618),
                   ),
                 ),
               ),
@@ -205,20 +209,21 @@ class _AuthScreenState extends State<AuthScreen> {
                     final acc = _savedAccounts[index];
                     return InputChip(
                       avatar: CircleAvatar(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: const Color(0xFFC25229),
                         child: Text(
                           acc.label.isNotEmpty ? acc.label[0].toUpperCase() : 'U',
                           style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),
-                      label: Text(acc.label),
-                      backgroundColor: Colors.white,
+                      label: Text(acc.label, style: const TextStyle(color: Color(0xFF4B2618))),
+                      backgroundColor: const Color(0xFFFAF6F1),
+                      side: const BorderSide(color: Color(0xFFD5C8BC)),
                       onPressed: () => _selectSavedAccount(acc),
                       onDeleted: () async {
                         await AccountManagerService.removeAccount(acc.email);
                         _loadSavedAccounts();
                       },
-                      deleteIconColor: Colors.grey,
+                      deleteIconColor: const Color(0xFF4B2618),
                     );
                   },
                 ),
@@ -245,30 +250,48 @@ class _AuthScreenState extends State<AuthScreen> {
                   ? 'Inicia sesión para gestionar pedidos y puntos'
                   : 'Regístrate y gana puntos por cada compra',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF4B2618),
+              ),
             ),
             const SizedBox(height: 20),
             if (!_isLogin) ...[
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Nombre completo',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
+                  labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                  prefixIcon: const Icon(Icons.person, color: Color(0xFF4B2618)),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFC25229)),
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: const Color(0xFFFAF6F1),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Teléfono',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
+                  labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                  prefixIcon: const Icon(Icons.phone, color: Color(0xFF4B2618)),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFC25229)),
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: const Color(0xFFFAF6F1),
                 ),
               ),
               const SizedBox(height: 12),
@@ -276,12 +299,19 @@ class _AuthScreenState extends State<AuthScreen> {
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Correo Electrónico',
-                prefixIcon: Icon(Icons.email),
-                border: OutlineInputBorder(),
+                labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                prefixIcon: const Icon(Icons.email, color: Color(0xFF4B2618)),
+                border: const OutlineInputBorder(),
+                enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFC25229)),
+                ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: const Color(0xFFFAF6F1),
               ),
             ),
             const SizedBox(height: 12),
@@ -290,17 +320,24 @@ class _AuthScreenState extends State<AuthScreen> {
               obscureText: _obscurePassword,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
-                prefixIcon: const Icon(Icons.lock),
+                labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                prefixIcon: const Icon(Icons.lock, color: Color(0xFF4B2618)),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.grey.shade600,
+                    color: const Color(0xFF4B2618),
                   ),
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
                 border: const OutlineInputBorder(),
+                enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFC25229)),
+                ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: const Color(0xFFFAF6F1),
               ),
             ),
             if (_isLogin) ...[
@@ -309,6 +346,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: _openForgotPasswordDialog,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFC25229),
+                  ),
                   child: const Text('¿Olvidaste tu contraseña?'),
                 ),
               ),
@@ -316,9 +356,13 @@ class _AuthScreenState extends State<AuthScreen> {
             const SizedBox(height: 8),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Recordar esta cuenta para acceso rápido', style: TextStyle(fontSize: 13)),
+              title: const Text(
+                'Recordar esta cuenta para acceso rápido',
+                style: TextStyle(fontSize: 13, color: Color(0xFF4B2618)),
+              ),
               value: _rememberAccount,
-              activeColor: Colors.deepOrange,
+              activeColor: const Color(0xFFC25229),
+              checkColor: Colors.white,
               controlAffinity: ListTileControlAffinity.leading,
               onChanged: (val) => setState(() => _rememberAccount = val ?? true),
             ),
@@ -328,7 +372,7 @@ class _AuthScreenState extends State<AuthScreen> {
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: const Color(0xFFC25229),
                   foregroundColor: Colors.white,
                 ),
                 onPressed: _isLoading ? null : _submit,
@@ -339,6 +383,9 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             TextButton(
               onPressed: () => setState(() => _isLogin = !_isLogin),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFC25229),
+              ),
               child: Text(
                 _isLogin
                     ? '¿No tienes cuenta? Regístrate aquí'
@@ -351,7 +398,10 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 20),
               const Divider(),
               const SizedBox(height: 10),
-              const AppUpdateCard(),
+              const AppUpdateCard(
+                backgroundColor: Color(0xFFFAF6F1),
+                accentColor: Color(0xFFC25229),
+              ),
             ],
           ],
         ),
@@ -480,12 +530,19 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Correo electrónico',
-                  prefixIcon: Icon(Icons.email),
-                  border: OutlineInputBorder(),
+                  labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                  prefixIcon: const Icon(Icons.email, color: Color(0xFF4B2618)),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFC25229)),
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: const Color(0xFFFAF6F1),
                 ),
               ),
             ] else ...[
@@ -501,12 +558,19 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 controller: _codeController,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Código de 6 dígitos',
-                  prefixIcon: Icon(Icons.pin),
-                  border: OutlineInputBorder(),
+                  labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                  prefixIcon: const Icon(Icons.pin, color: Color(0xFF4B2618)),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFC25229)),
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: const Color(0xFFFAF6F1),
                 ),
               ),
               const SizedBox(height: 8),
@@ -515,21 +579,28 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   labelText: 'Nueva contraseña',
-                  prefixIcon: const Icon(Icons.lock),
+                  labelStyle: const TextStyle(color: Color(0xFF4B2618)),
+                  prefixIcon: const Icon(Icons.lock, color: Color(0xFF4B2618)),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_off
                           : Icons.visibility,
-                      color: Colors.grey.shade600,
+                      color: const Color(0xFF4B2618),
                     ),
                     onPressed: () => setState(
                       () => _obscurePassword = !_obscurePassword,
                     ),
                   ),
                   border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD5C8BC)),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFC25229)),
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: const Color(0xFFFAF6F1),
                 ),
               ),
             ],

@@ -3,7 +3,10 @@ import 'package:ota_update/ota_update.dart';
 import '../services/update_service.dart';
 
 class AppUpdateCard extends StatefulWidget {
-  const AppUpdateCard({super.key});
+  final Color? backgroundColor;
+  final Color? accentColor;
+
+  const AppUpdateCard({super.key, this.backgroundColor, this.accentColor});
 
   @override
   State<AppUpdateCard> createState() => _AppUpdateCardState();
@@ -59,7 +62,10 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = widget.accentColor ?? Colors.deepOrange;
+
     return Card(
+      color: widget.backgroundColor,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
@@ -69,7 +75,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
           children: [
             Row(
               children: [
-                const Icon(Icons.system_update, color: Colors.deepOrange),
+                Icon(Icons.system_update, color: accentColor),
                 const SizedBox(width: 8),
                 const Text(
                   'Versión del Sistema',
@@ -98,7 +104,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             const SizedBox(height: 10),
 
             if (_downloadProgress != null) ...[
-              LinearProgressIndicator(color: Colors.deepOrange, backgroundColor: Colors.orange.shade100),
+              LinearProgressIndicator(color: accentColor, backgroundColor: accentColor.withAlpha(38)),
               const SizedBox(height: 6),
               Text(_downloadProgress!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ] else if (_updateInfo != null && _updateInfo!.hasUpdate && _updateInfo!.downloadUrl != null) ...[
