@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/app_colors.dart';
 import '../domain/product.dart';
 import 'widgets/product_image_viewer.dart';
 import '../../../core/utils/image_focus_helper.dart';
@@ -246,7 +247,7 @@ class _ProductCustomizationDialogState
         : 'Q${(finalPrice * _quantity).toStringAsFixed(2)}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F9),
+      backgroundColor: AppColors.background,
       body: Column(
         children: [
           _buildHeader(basePrice),
@@ -261,6 +262,7 @@ class _ProductCustomizationDialogState
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
                         ),
                       ),
                       if (widget.product.description != null &&
@@ -401,9 +403,9 @@ class _ProductCustomizationDialogState
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.border),
       ),
       child: child,
     );
@@ -417,15 +419,15 @@ class _ProductCustomizationDialogState
         children: [
           Row(
             children: [
-              Icon(Icons.restaurant_menu,
-                  size: 18, color: Colors.deepOrange.shade700),
+              const Icon(Icons.restaurant_menu,
+                  size: 18, color: AppColors.primary),
               const SizedBox(width: 6),
               Text(
                 'Elige una opción',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
-                  color: Colors.deepOrange.shade900,
+                  color: AppColors.primary,
                 ),
               ),
             ],
@@ -451,12 +453,12 @@ class _ProductCustomizationDialogState
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? Colors.deepOrange.shade50
+                        ? AppColors.surface
                         : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isSelected
-                          ? Colors.deepOrange
+                          ? AppColors.secondary
                           : Colors.grey.shade300,
                       width: isSelected ? 1.5 : 1,
                     ),
@@ -467,7 +469,7 @@ class _ProductCustomizationDialogState
                         isSelected
                             ? Icons.radio_button_checked
                             : Icons.radio_button_off,
-                        color: isSelected ? Colors.deepOrange : Colors.grey,
+                        color: isSelected ? AppColors.secondary : Colors.grey,
                         size: 22,
                       ),
                       const SizedBox(width: 10),
@@ -489,7 +491,7 @@ class _ProductCustomizationDialogState
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: isSelected
-                              ? Colors.deepOrange.shade800
+                              ? AppColors.secondary
                               : Colors.grey.shade700,
                         ),
                       ),
@@ -692,7 +694,7 @@ class _ProductCustomizationDialogState
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -728,7 +730,7 @@ class _ProductCustomizationDialogState
                     ),
                     IconButton(
                       icon: const Icon(Icons.add, size: 18,
-                          color: Colors.deepOrange),
+                          color: AppColors.secondary),
                       onPressed: () => _changeQuantity(1),
                     ),
                   ],
@@ -741,7 +743,7 @@ class _ProductCustomizationDialogState
                 height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
+                    backgroundColor: AppColors.secondary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -769,9 +771,9 @@ class _ProductCustomizationDialogState
 
   Widget _dialogPlaceholder() {
     return Container(
-      color: Colors.orange.shade100,
+      color: AppColors.surface,
       alignment: Alignment.center,
-      child: Icon(Icons.fastfood, size: 60, color: Colors.deepOrange.shade300),
+      child: const Icon(Icons.fastfood, size: 60, color: AppColors.secondary),
     );
   }
 }

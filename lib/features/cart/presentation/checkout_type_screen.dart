@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/device_id_service.dart';
 import '../../../core/services/guest_orders_service.dart';
 import '../presentation/cart_controller.dart';
@@ -14,7 +15,7 @@ class _DeliveryOption {
   final String title;
   final String subtitle;
   final IconData icon;
-  final MaterialColor color;
+  final Color color;
 
   const _DeliveryOption({
     required this.type,
@@ -60,7 +61,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
       title: 'A domicilio',
       subtitle: 'Te lo llevamos hasta tu dirección',
       icon: Icons.two_wheeler,
-      color: Colors.deepOrange,
+      color: AppColors.secondary,
     ),
   ];
 
@@ -305,14 +306,18 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     final activeColor = _optionFor(deliveryType).color;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F9),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: const Color(0xFFF7F7F9),
-        foregroundColor: Colors.black87,
+        backgroundColor: AppColors.logoBackground,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
         title: const Text(
           '¿Cómo deseas tu pedido?',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -325,7 +330,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
+                color: AppColors.primary,
               ),
             ),
             const SizedBox(height: 16),
@@ -415,10 +420,10 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? baseColor.shade50 : Colors.white,
+          color: isSelected ? baseColor.withAlpha(20) : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? baseColor : Colors.grey.shade300,
+            color: isSelected ? baseColor : AppColors.border,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
@@ -435,13 +440,13 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: isSelected ? baseColor.shade100 : Colors.grey.shade100,
+                color: isSelected ? baseColor.withAlpha(30) : AppColors.border.withAlpha(60),
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
               child: Icon(
                 option.icon,
-                color: isSelected ? baseColor.shade700 : Colors.grey.shade600,
+                color: isSelected ? baseColor : AppColors.textSecondary,
                 size: 28,
               ),
             ),
@@ -452,10 +457,10 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                 children: [
                   Text(
                     option.title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: isSelected ? baseColor.shade900 : Colors.black87,
+                      color: AppColors.primary,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -463,7 +468,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
                     option.subtitle,
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade600,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -475,7 +480,7 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
               decoration: BoxDecoration(
                 color: isSelected ? baseColor : Colors.transparent,
                 border: Border.all(
-                  color: isSelected ? baseColor : Colors.grey.shade400,
+                  color: isSelected ? baseColor : AppColors.border,
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(14),
@@ -490,57 +495,64 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
     );
   }
 
+  InputDecoration _fieldDecoration({
+    required String label,
+    String? hint,
+    required IconData icon,
+    required Color activeColor,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: const TextStyle(color: AppColors.primary),
+      prefixIcon: Icon(icon, color: AppColors.primary),
+      filled: true,
+      fillColor: AppColors.surface,
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: activeColor, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: AppColors.inputBorder),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
+
   Widget _buildForm(Color activeColor, String deliveryType, bool isPosMode) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         children: [
           TextField(
             controller: _nameController,
             textCapitalization: TextCapitalization.words,
-            decoration: InputDecoration(
-              labelText: isPosMode
+            decoration: _fieldDecoration(
+              label: isPosMode
                   ? 'Nombre del cliente *'
                   : 'Nombre de quien recibe / ordena *',
-              hintText: 'Ej. Juan Pérez',
-              prefixIcon: const Icon(Icons.person_outline),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: activeColor, width: 1.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              hint: 'Ej. Juan Pérez',
+              icon: Icons.person_outline,
+              activeColor: activeColor,
             ),
           ),
           const SizedBox(height: 14),
           if (deliveryType == 'local') ...[
             TextField(
               controller: _tableController,
-              decoration: InputDecoration(
-                labelText: 'Número o Nombre de Mesa *',
-                hintText: 'Ej. Mesa 3 / Barra',
-                prefixIcon: const Icon(Icons.pin),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: activeColor, width: 1.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              decoration: _fieldDecoration(
+                label: 'Número o Nombre de Mesa *',
+                hint: 'Ej. Mesa 3 / Barra',
+                icon: Icons.pin,
+                activeColor: activeColor,
               ),
             ),
             const SizedBox(height: 14),
@@ -548,45 +560,25 @@ class _CheckoutTypeScreenState extends ConsumerState<CheckoutTypeScreen> {
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              labelText: isPosMode
+            decoration: _fieldDecoration(
+              label: isPosMode
                   ? 'Teléfono de contacto (opcional)'
                   : 'Teléfono de contacto *',
-              hintText: isPosMode
+              hint: isPosMode
                   ? 'Si se deja vacío se guarda "Mostrador"'
                   : null,
-              prefixIcon: const Icon(Icons.phone),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: activeColor, width: 1.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              icon: Icons.phone,
+              activeColor: activeColor,
             ),
           ),
           const SizedBox(height: 14),
           TextField(
             controller: _notesController,
-            decoration: InputDecoration(
-              labelText: 'Instrucciones adicionales (opcional)',
-              hintText: 'Ej. Servir sin hielo, cubiertos extra',
-              prefixIcon: const Icon(Icons.note_alt_outlined),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: activeColor, width: 1.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+            decoration: _fieldDecoration(
+              label: 'Instrucciones adicionales (opcional)',
+              hint: 'Ej. Servir sin hielo, cubiertos extra',
+              icon: Icons.note_alt_outlined,
+              activeColor: activeColor,
             ),
           ),
         ],

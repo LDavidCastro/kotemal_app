@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/reward_tier.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/image_focus_helper.dart';
@@ -60,25 +61,31 @@ class CartScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.delete_sweep, color: Colors.deepOrange),
+            Icon(Icons.delete_sweep, color: AppColors.secondary),
             SizedBox(width: 10),
-            Text('Vaciar carrito'),
+            Text(
+              'Vaciar carrito',
+              style: TextStyle(color: AppColors.primary),
+            ),
           ],
         ),
         content: const Text(
           '¿Seguro que quieres eliminar todos los artículos de tu pedido?',
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
             child: const Text('Cancelar'),
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: AppColors.secondary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -217,13 +224,13 @@ class CartScreen extends ConsumerWidget {
     if (section.startsWith('OPCIÓN: ')) {
       final value = section.replaceFirst('OPCIÓN: ', '').trim();
       return Chip(
-        avatar: const Icon(Icons.restaurant_menu, size: 16, color: Colors.deepOrange),
+        avatar: const Icon(Icons.restaurant_menu, size: 16, color: AppColors.secondary),
         label: Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary),
         ),
-        backgroundColor: Colors.orange.shade50,
-        side: BorderSide(color: Colors.orange.shade200),
+        backgroundColor: AppColors.surface,
+        side: const BorderSide(color: AppColors.border),
         padding: EdgeInsets.zero,
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -294,24 +301,29 @@ class CartScreen extends ConsumerWidget {
     final pointsToEarn = (totalToPay * 0.5).round();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F9),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: const Color(0xFFF7F7F9),
-        foregroundColor: Colors.black87,
+        backgroundColor: AppColors.logoBackground,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Mi Pedido',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
             ),
             if (itemCount > 0)
               Text(
                 '$itemCount artículo${itemCount == 1 ? '' : 's'}',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey.shade600,
+                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -344,10 +356,10 @@ class CartScreen extends ConsumerWidget {
 
                       return Card(
                         elevation: 0,
-                        color: Colors.white,
+                        color: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Colors.grey.shade200),
+                          side: const BorderSide(color: AppColors.border),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(14.0),
@@ -391,6 +403,7 @@ class CartScreen extends ConsumerWidget {
                                           style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.bold,
+                                            color: AppColors.primary,
                                           ),
                                         ),
                                         const SizedBox(height: 2),
@@ -398,7 +411,7 @@ class CartScreen extends ConsumerWidget {
                                           'Q${item.unitPrice.toStringAsFixed(2)} c/u',
                                           style: TextStyle(
                                             fontSize: 13,
-                                            color: Colors.grey.shade600,
+                                            color: AppColors.textSecondary,
                                           ),
                                         ),
                                         const SizedBox(height: 8),
@@ -439,7 +452,7 @@ class CartScreen extends ConsumerWidget {
                                   style: TextButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(vertical: 8),
                                     visualDensity: VisualDensity.compact,
-                                    foregroundColor: Colors.blue.shade800,
+                                    foregroundColor: AppColors.secondary,
                                     alignment: Alignment.centerLeft,
                                   ),
                                   icon: const Icon(Icons.edit, size: 18),
@@ -486,11 +499,11 @@ class CartScreen extends ConsumerWidget {
           children: [
             CircleAvatar(
               radius: 52,
-              backgroundColor: Colors.orange.shade50,
-              child: Icon(
+              backgroundColor: AppColors.surface,
+              child: const Icon(
                 Icons.shopping_bag_outlined,
                 size: 48,
-                color: Colors.orange.shade700,
+                color: AppColors.secondary,
               ),
             ),
             const SizedBox(height: 24),
@@ -499,6 +512,7 @@ class CartScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
+                color: AppColors.primary,
               ),
             ),
             const SizedBox(height: 10),
@@ -507,13 +521,13 @@ class CartScreen extends ConsumerWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
-                color: Colors.grey.shade600,
+                color: AppColors.textSecondary,
               ),
             ),
             const SizedBox(height: 28),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
+                backgroundColor: AppColors.secondary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -538,9 +552,9 @@ class CartScreen extends ConsumerWidget {
     return Container(
       height: 34,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
+        color: AppColors.surface,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -593,7 +607,7 @@ class CartScreen extends ConsumerWidget {
                 child: const Icon(
                   Icons.add,
                   size: 18,
-                  color: Colors.deepOrange,
+                  color: AppColors.secondary,
                 ),
               ),
             ),
@@ -616,7 +630,7 @@ class CartScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -743,7 +757,7 @@ class CartScreen extends ConsumerWidget {
               height: 52,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: AppColors.secondary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -776,7 +790,7 @@ class CartScreen extends ConsumerWidget {
       width: 76,
       height: 76,
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       alignment: Alignment.center,
@@ -784,7 +798,7 @@ class CartScreen extends ConsumerWidget {
         item.product.name.isNotEmpty ? item.product.name[0].toUpperCase() : '?',
         style: const TextStyle(
           fontWeight: FontWeight.bold,
-          color: Colors.deepOrange,
+          color: AppColors.secondary,
           fontSize: 28,
         ),
       ),
