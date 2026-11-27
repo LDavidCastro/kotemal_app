@@ -502,15 +502,29 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         appBar: AppBar(
           titleSpacing: 4,
           centerTitle: false,
-          title: const FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              "K'OTEMAL - Menú",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipOval(
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  height: 36,
+                  width: 36,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.local_cafe),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Flexible(
+                child: Text(
+                  "K'OTEMAL",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
           actions: [
             if (showAdminHub)
