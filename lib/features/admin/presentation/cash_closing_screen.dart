@@ -102,8 +102,10 @@ String _csvCell(Object? value) {
 
 String _buildCsv(
   List<Map<String, dynamic>> orders,
-  _ReportStats stats,
-) {
+  _ReportStats stats, {
+  double expenses = 0,
+  List<Map<String, dynamic>> expensesList = const [],
+}) {
   final buffer = StringBuffer('\uFEFF');
   buffer.writeln(
     'Orden,Fecha_Hora,Modalidad,Telefono,Metodo_Pago,Total_Q,Platillos',
@@ -160,6 +162,49 @@ String _buildCsv(
       '',
     ].map(_csvCell).join(','),
   );
+  buffer.writeln(
+    [
+      'GASTOS_DEL_TURNO',
+      '',
+      '',
+      '',
+      '',
+      expenses.toStringAsFixed(2),
+      '',
+    ].map(_csvCell).join(','),
+  );
+  buffer.writeln(
+    [
+      'BALANCE_NETO',
+      '',
+      '',
+      '',
+      '',
+      (stats.revenue - expenses).toStringAsFixed(2),
+      '',
+    ].map(_csvCell).join(','),
+  );
+
+  if (expensesList.isNotEmpty) {
+    buffer.writeln('');
+    buffer.writeln(
+      'Categoria,Descripcion,Monto_Q,Metodo_Pago,Hora,Registrado_Por',
+    );
+    for (final expense in expensesList) {
+      final createdAt = _parseDate(expense['created_at']);
+      final amount = (expense['amount'] as num?)?.toDouble() ?? 0;
+      buffer.writeln(
+        [
+          expense['category']?.toString() ?? '',
+          expense['description']?.toString() ?? '',
+          amount.toStringAsFixed(2),
+          _paymentLabel(expense['payment_method']),
+          createdAt != null ? Formatters.dateTime(createdAt) : '',
+          expense['registered_by_name']?.toString() ?? '',
+        ].map(_csvCell).join(','),
+      );
+    }
+  }
 
   return buffer.toString();
 }
@@ -170,6 +215,8 @@ Future<void> _shareWhatsAppSummary({
   Object? closureId,
   String? notes,
   _ReportStats? stats,
+  double expenses = 0,
+  List<Map<String, dynamic>> expensesList = const [],
 }) async {
   final report = stats ?? _ReportStats.fromOrders(orders);
 
@@ -201,7 +248,28 @@ Future<void> _shareWhatsAppSummary({
       '(${Formatters.currency(report.deliveryTotal)})',
     )
     ..writeln()
-    ..writeln('*💰 TOTAL RECAUDADO: ${Formatters.currency(report.revenue)}*');
+    ..writeln('*💸 GASTOS DEL TURNO: ${Formatters.currency(expenses)}*');
+
+  if (expensesList.isNotEmpty) {
+    buffer.writeln();
+    for (final expense in expensesList) {
+      final amount = (expense['amount'] as num?)?.toDouble() ?? 0;
+      final methodLabel = expense['payment_method']?.toString() == 'transferencia'
+          ? 'Transf'
+          : 'Efec';
+      final registeredBy =
+          expense['registered_by_name']?.toString().trim() ?? '—';
+      buffer.writeln(
+        '• ${expense['category']?.toString() ?? 'Gasto'} '
+        '(${Formatters.currency(amount)} $methodLabel) · Por: $registeredBy',
+      );
+    }
+  }
+
+  buffer
+    ..writeln()
+    ..writeln('*💰 TOTAL RECAUDADO: ${Formatters.currency(report.revenue)}*')
+    ..writeln('*🏦 BALANCE NETO: ${Formatters.currency(report.revenue - expenses)}*');
 
   final trimmedNotes = notes?.trim() ?? '';
   if (trimmedNotes.isNotEmpty) {
@@ -223,9 +291,16 @@ Future<void> _exportExcelCsv({
   required List<Map<String, dynamic>> orders,
   required DateTime cutoff,
   _ReportStats? stats,
+  double expenses = 0,
+  List<Map<String, dynamic>> expensesList = const [],
 }) async {
   final report = stats ?? _ReportStats.fromOrders(orders);
-  final csv = _buildCsv(orders, report);
+  final csv = _buildCsv(
+    orders,
+    report,
+    expenses: expenses,
+    expensesList: expensesList,
+  );
   final fileName = 'cierre_kotemal_${_fileDate(cutoff)}.csv';
 
   final file = XFile.fromData(
@@ -259,9 +334,13 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
   bool _closing = false;
   String? _error;
   List<Map<String, dynamic>> _paidOrders = [];
+  List<Map<String, dynamic>> _openExpenses = [];
   double _cashTotal = 0;
   double _transferTotal = 0;
   double _revenueTotal = 0;
+  double _expensesTotal = 0;
+  double _expensesCash = 0;
+  double _expensesTransfer = 0;
 
   @override
   void initState() {
@@ -304,12 +383,40 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         }
       }
 
+      final expensesData = await _supabase
+          .from('expenses')
+          .select(
+            'id, amount, payment_method, category, description, '
+            'created_at, registered_by_name',
+          )
+          .isFilter('closure_id', null)
+          .order('created_at', ascending: false);
+
+      final expenses = (expensesData as List).cast<Map<String, dynamic>>();
+      var expTotal = 0.0;
+      var expCash = 0.0;
+      var expTransfer = 0.0;
+      for (final expense in expenses) {
+        final amount = (expense['amount'] ?? 0).toDouble();
+        final method = expense['payment_method'];
+        expTotal += amount;
+        if (method == 'efectivo') {
+          expCash += amount;
+        } else if (method == 'transferencia') {
+          expTransfer += amount;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _paidOrders = orders;
+        _openExpenses = expenses;
         _cashTotal = cash;
         _transferTotal = transfer;
         _revenueTotal = cash + transfer;
+        _expensesTotal = expTotal;
+        _expensesCash = expCash;
+        _expensesTransfer = expTransfer;
         _loading = false;
       });
     } catch (e) {
@@ -339,6 +446,8 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
       () => _shareWhatsAppSummary(
         orders: _paidOrders,
         cutoff: DateTime.now(),
+        expenses: _expensesTotal,
+        expensesList: _openExpenses,
       ),
     );
   }
@@ -350,7 +459,12 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
       final orders = await _fetchOrdersWithItems(
         _paidOrders.map((order) => order['id']).toList(),
       );
-      await _exportExcelCsv(orders: orders, cutoff: DateTime.now());
+      await _exportExcelCsv(
+        orders: orders,
+        cutoff: DateTime.now(),
+        expenses: _expensesTotal,
+        expensesList: _openExpenses,
+      );
     });
   }
 
@@ -378,7 +492,9 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           'Se registrará un cierre con ${_paidOrders.length} orden(es) pagada(s) '
           'por un total de ${Formatters.currency(_revenueTotal)}.\n\n'
           'Efectivo: ${Formatters.currency(_cashTotal)}\n'
-          'Transferencia: ${Formatters.currency(_transferTotal)}',
+          'Transferencia: ${Formatters.currency(_transferTotal)}\n\n'
+          'Gastos del turno: ${Formatters.currency(_expensesTotal)}\n'
+          'Balance neto: ${Formatters.currency(_revenueTotal - _expensesTotal)}',
         ),
         actions: [
           TextButton(
@@ -402,6 +518,8 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     final closedOrders = List<Map<String, dynamic>>.from(_paidOrders);
     final closedOrderIds = closedOrders.map((order) => order['id']).toList();
     final closedRevenue = _revenueTotal;
+    final closedExpenses = _expensesTotal;
+    final closedExpensesList = List<Map<String, dynamic>>.from(_openExpenses);
     const closureNotes = 'Cierre generado desde la aplicación.';
 
     setState(() => _closing = true);
@@ -416,6 +534,9 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             'total_cash': _cashTotal,
             'total_transfer': _transferTotal,
             'total_revenue': _revenueTotal,
+            'total_expenses': _expensesTotal,
+            'expenses_cash': _expensesCash,
+            'expenses_transfer': _expensesTransfer,
             'notes': closureNotes,
           })
           .select('id')
@@ -430,6 +551,17 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             .inFilter('id', closedOrderIds);
       }
 
+      final expenseIds = _openExpenses
+          .where((expense) => expense['id'] != null)
+          .map((expense) => expense['id'] as int)
+          .toList();
+      if (expenseIds.isNotEmpty) {
+        await _supabase
+            .from('expenses')
+            .update({'closure_id': newClosureId})
+            .inFilter('id', expenseIds);
+      }
+
       if (!mounted) return;
       setState(() => _closing = false);
       await _loadSummary();
@@ -442,7 +574,8 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           content: Text(
             'Se cerró la caja con ${closedOrders.length} orden(es) '
             'por ${Formatters.currency(closedRevenue)}.\n\n'
-            '¿Qué deseas hacer ahora?',
+            'Gastos: ${Formatters.currency(closedExpenses)}\n'
+            'Balance neto: ${Formatters.currency(closedRevenue - closedExpenses)}',
           ),
           actions: [
             TextButton(
@@ -476,12 +609,19 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             cutoff: DateTime.now(),
             closureId: newClosureId,
             notes: closureNotes,
+            expenses: closedExpenses,
+            expensesList: closedExpensesList,
           ),
         );
       } else if (action == 'excel') {
         await _runReportAction(() async {
           final orders = await _fetchOrdersWithItems(closedOrderIds);
-          await _exportExcelCsv(orders: orders, cutoff: DateTime.now());
+          await _exportExcelCsv(
+            orders: orders,
+            cutoff: DateTime.now(),
+            expenses: closedExpenses,
+            expensesList: closedExpensesList,
+          );
         });
       } else if (action == 'history') {
         await _openHistory();
@@ -628,6 +768,14 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildExpensesCard(),
+        if (_openExpenses.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildExpensesBreakdown(),
+        ],
+        const SizedBox(height: 12),
+        _buildNetBalanceCard(),
         const SizedBox(height: 20),
         if (_paidOrders.isNotEmpty)
           SizedBox(
@@ -701,6 +849,208 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         else
           ..._paidOrders.map(_buildOrderTile),
       ],
+    );
+  }
+
+  Widget _buildExpensesCard() {
+    return Card(
+      color: Colors.red.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.red.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Gastos del turno', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 4),
+                Text(
+                  'Efectivo / Transferencia',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  Formatters.currency(_expensesTotal),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                Text(
+                  '${Formatters.currency(_expensesCash)} / ${Formatters.currency(_expensesTransfer)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpensesBreakdown() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.receipt_long, size: 18, color: Colors.red),
+                SizedBox(width: 8),
+                Text(
+                  'Desglose de gastos',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            ..._openExpenses.map(_buildExpenseRow),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpenseRow(Map<String, dynamic> expense) {
+    final amount = (expense['amount'] ?? 0).toDouble();
+    final method = expense['payment_method']?.toString() ?? 'efectivo';
+    final isCash = method == 'efectivo';
+    final registeredBy =
+        expense['registered_by_name']?.toString().trim() ?? '—';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  expense['category']?.toString() ?? 'Gasto',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  expense['description']?.toString().trim().isNotEmpty == true
+                      ? expense['description'].toString()
+                      : 'Sin descripción',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Por: $registeredBy',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                Formatters.currency(amount),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isCash
+                      ? Colors.green.withValues(alpha: 0.12)
+                      : Colors.blue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isCash ? 'Efectivo' : 'Transferencia',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isCash ? Colors.green : Colors.blue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetBalanceCard() {
+    final netBalance = _revenueTotal - _expensesTotal;
+    final netCash = _cashTotal - _expensesCash;
+
+    return Card(
+      color: Colors.green.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.green.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Balance neto en caja',
+                  style: TextStyle(fontSize: 16),
+                ),
+                Text(
+                  Formatters.currency(netBalance),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: netBalance >= 0 ? Colors.green.shade800 : Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Efectivo neto esperado en gaveta',
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                Text(
+                  Formatters.currency(netCash),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: netCash >= 0 ? Colors.green.shade700 : Colors.red,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -869,6 +1219,7 @@ class _HistoryTotals {
     required this.cash,
     required this.transfer,
     required this.revenue,
+    required this.expenses,
   });
 
   final int closures;
@@ -876,18 +1227,23 @@ class _HistoryTotals {
   final double cash;
   final double transfer;
   final double revenue;
+  final double expenses;
+
+  double get netRevenue => revenue - expenses;
 
   factory _HistoryTotals.fromClosures(List<Map<String, dynamic>> closures) {
     var orders = 0;
     var cash = 0.0;
     var transfer = 0.0;
     var revenue = 0.0;
+    var expenses = 0.0;
 
     for (final closure in closures) {
       orders += (closure['total_orders'] as num?)?.toInt() ?? 0;
       cash += (closure['total_cash'] as num?)?.toDouble() ?? 0;
       transfer += (closure['total_transfer'] as num?)?.toDouble() ?? 0;
       revenue += (closure['total_revenue'] as num?)?.toDouble() ?? 0;
+      expenses += (closure['total_expenses'] as num?)?.toDouble() ?? 0;
     }
 
     return _HistoryTotals(
@@ -896,6 +1252,7 @@ class _HistoryTotals {
       cash: cash,
       transfer: transfer,
       revenue: revenue,
+      expenses: expenses,
     );
   }
 }
@@ -994,9 +1351,13 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
         ..writeln(
           '🏦 Transferencia acumulada: ${Formatters.currency(totals.transfer)}',
         )
+        ..writeln('💸 Gastos acumulados: ${Formatters.currency(totals.expenses)}')
         ..writeln()
         ..writeln(
           '*💰 TOTAL GENERAL RECAUDADO: ${Formatters.currency(totals.revenue)}*',
+        )
+        ..writeln(
+          '*🏦 BALANCE NETO ACUMULADO: ${Formatters.currency(totals.netRevenue)}*',
         )
         ..writeln()
         ..writeln('*Desglose por corte:*');
@@ -1049,11 +1410,13 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
       final buffer = StringBuffer('\uFEFF');
       buffer.writeln(
         'Cierre_ID,Fecha_Cierre,Total_Ordenes,Efectivo_Q,'
-        'Transferencia_Q,Total_Q,Notas',
+        'Transferencia_Q,Total_Q,Gastos_Q,Balance_Neto_Q,Notas',
       );
 
       for (final closure in _closures) {
         final date = _parseDate(closure['closure_date']);
+        final total = (closure['total_revenue'] as num?)?.toDouble() ?? 0;
+        final expenses = (closure['total_expenses'] as num?)?.toDouble() ?? 0;
         buffer.writeln(
           [
             closure['id'],
@@ -1065,8 +1428,9 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
                 .toStringAsFixed(2),
             ((closure['total_transfer'] as num?)?.toDouble() ?? 0)
                 .toStringAsFixed(2),
-            ((closure['total_revenue'] as num?)?.toDouble() ?? 0)
-                .toStringAsFixed(2),
+            total.toStringAsFixed(2),
+            expenses.toStringAsFixed(2),
+            (total - expenses).toStringAsFixed(2),
             closure['notes']?.toString() ?? '',
           ].map(_csvCell).join(','),
         );
@@ -1080,6 +1444,8 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
           totals.cash.toStringAsFixed(2),
           totals.transfer.toStringAsFixed(2),
           totals.revenue.toStringAsFixed(2),
+          totals.expenses.toStringAsFixed(2),
+          totals.netRevenue.toStringAsFixed(2),
           '',
         ].map(_csvCell).join(','),
       );
@@ -1300,8 +1666,16 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
               Formatters.currency(totals.transfer),
             ),
             _buildHistoryRow(
+              'Gastos acumulados',
+              Formatters.currency(totals.expenses),
+            ),
+            _buildHistoryRow(
               'Total general recaudado',
               Formatters.currency(totals.revenue),
+            ),
+            _buildHistoryRow(
+              'Balance neto acumulado',
+              Formatters.currency(totals.netRevenue),
               bold: true,
             ),
             const SizedBox(height: 12),
@@ -1347,6 +1721,8 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
     final totalCash = (closure['total_cash'] ?? 0).toDouble();
     final totalTransfer = (closure['total_transfer'] ?? 0).toDouble();
     final totalRevenue = (closure['total_revenue'] ?? 0).toDouble();
+    final totalExpenses = (closure['total_expenses'] ?? 0).toDouble();
+    final netBalance = totalRevenue - totalExpenses;
     final closureDate = _parseDate(closure['closure_date']);
     final dateLabel = closureDate != null
         ? Formatters.dateTime(closureDate).split(' ').first
@@ -1394,6 +1770,14 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
               _buildHistoryRow(
                 'Total ingresado',
                 Formatters.currency(totalRevenue),
+              ),
+              _buildHistoryRow(
+                'Gastos del turno',
+                Formatters.currency(totalExpenses),
+              ),
+              _buildHistoryRow(
+                'Balance neto',
+                Formatters.currency(netBalance),
                 bold: true,
               ),
               const SizedBox(height: 8),
@@ -1469,31 +1853,43 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
   bool _reopening = false;
   String? _error;
   List<Map<String, dynamic>> _orders = [];
+  List<Map<String, dynamic>> _expenses = [];
 
   DateTime get _cutoff => _closureCutoff(widget.closure);
 
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    _loadData();
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _loadData() async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final data = await _supabase
-          .from('orders')
-          .select(_ordersWithItemsSelect)
-          .eq('closure_id', widget.closure['id'])
-          .order('paid_at', ascending: true);
+      final results = await Future.wait([
+        _supabase
+            .from('orders')
+            .select(_ordersWithItemsSelect)
+            .eq('closure_id', widget.closure['id'])
+            .order('paid_at', ascending: true),
+        _supabase
+            .from('expenses')
+            .select(
+              'id, amount, payment_method, category, description, '
+              'created_at, registered_by_name',
+            )
+            .eq('closure_id', widget.closure['id'])
+            .order('created_at', ascending: false),
+      ]);
 
       if (!mounted) return;
       setState(() {
-        _orders = (data as List).cast<Map<String, dynamic>>();
+        _orders = (results[0] as List).cast<Map<String, dynamic>>();
+        _expenses = (results[1] as List).cast<Map<String, dynamic>>();
         _loading = false;
       });
     } catch (e) {
@@ -1521,6 +1917,8 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
       : _ReportStats.fromClosure(widget.closure);
 
   Future<void> _shareSummary() async {
+    final totalExpenses =
+        (widget.closure['total_expenses'] as num?)?.toDouble() ?? 0;
     await _runReportAction(
       () => _shareWhatsAppSummary(
         orders: _orders,
@@ -1528,16 +1926,22 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
         closureId: widget.closure['id'],
         notes: widget.closure['notes']?.toString(),
         stats: _stats,
+        expenses: totalExpenses,
+        expensesList: _expenses,
       ),
     );
   }
 
   Future<void> _exportCsv() async {
+    final totalExpenses =
+        (widget.closure['total_expenses'] as num?)?.toDouble() ?? 0;
     await _runReportAction(
       () => _exportExcelCsv(
         orders: _orders,
         cutoff: _cutoff,
         stats: _stats,
+        expenses: totalExpenses,
+        expensesList: _expenses,
       ),
     );
   }
@@ -1600,7 +2004,7 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
-            onPressed: _loading ? null : _loadOrders,
+            onPressed: _loading ? null : _loadData,
           ),
         ],
       ),
@@ -1627,7 +2031,7 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadOrders,
+              onPressed: _loadData,
               child: const Text('Reintentar'),
             ),
           ],
@@ -1673,6 +2077,10 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
         ),
         const SizedBox(height: 16),
         _buildModalityCard(stats),
+        if (_expenses.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildClosureExpensesCard(),
+        ],
         const SizedBox(height: 16),
         const Text(
           'Órdenes incluidas en este cierre',
@@ -1716,6 +2124,9 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
         (widget.closure['total_transfer'] as num?)?.toDouble() ?? stats.transfer;
     final totalRevenue =
         (widget.closure['total_revenue'] as num?)?.toDouble() ?? stats.revenue;
+    final totalExpenses =
+        (widget.closure['total_expenses'] as num?)?.toDouble() ?? 0;
+    final netBalance = totalRevenue - totalExpenses;
     final notes = widget.closure['notes']?.toString().trim() ?? '';
 
     return Card(
@@ -1745,6 +2156,14 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
             _buildDetailRow(
               'Total recaudado',
               Formatters.currency(totalRevenue),
+            ),
+            _buildDetailRow(
+              'Gastos del turno',
+              Formatters.currency(totalExpenses),
+            ),
+            _buildDetailRow(
+              'Balance neto',
+              Formatters.currency(netBalance),
               bold: true,
             ),
             if (notes.isNotEmpty) ...[
@@ -1823,6 +2242,107 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
           Text(
             Formatters.currency(total),
             style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClosureExpensesCard() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.receipt_long, size: 18, color: Colors.red),
+                SizedBox(width: 8),
+                Text(
+                  'Desglose de gastos',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            ..._expenses.map(_buildClosureExpenseRow),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClosureExpenseRow(Map<String, dynamic> expense) {
+    final amount = (expense['amount'] ?? 0).toDouble();
+    final method = expense['payment_method']?.toString() ?? 'efectivo';
+    final isCash = method == 'efectivo';
+    final registeredBy =
+        expense['registered_by_name']?.toString().trim() ?? '—';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  expense['category']?.toString() ?? 'Gasto',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  expense['description']?.toString().trim().isNotEmpty == true
+                      ? expense['description'].toString()
+                      : 'Sin descripción',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Por: $registeredBy',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                Formatters.currency(amount),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isCash
+                      ? Colors.green.withValues(alpha: 0.12)
+                      : Colors.blue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isCash ? 'Efectivo' : 'Transferencia',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isCash ? Colors.green : Colors.blue,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

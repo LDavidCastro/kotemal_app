@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cash_closing_screen.dart';
+import 'expenses_screen.dart';
 import 'orders_dashboard_screen.dart';
 import 'product_edit_screen.dart';
 import 'users_roles_screen.dart';
@@ -153,18 +154,13 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
         _HubOption(
           title: 'Registro de Gastos',
           description:
-              'Anota compras de insumos, gas o pagos del día (próximamente activo).',
+              'Anota compras de insumos, gas o pagos del día y descuéntalos del cierre.',
           icon: Icons.receipt_long,
           color: Colors.amber.shade800,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Módulo de Gastos listo para activar en el siguiente paso',
-                ),
-              ),
-            );
-          },
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ExpensesScreen()),
+          ),
         ),
       if (widget.canViewUsers)
         _HubOption(
