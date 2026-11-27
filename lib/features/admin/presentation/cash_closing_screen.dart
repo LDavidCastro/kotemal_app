@@ -551,15 +551,17 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             .inFilter('id', closedOrderIds);
       }
 
-      final expenseIds = _openExpenses
-          .where((expense) => expense['id'] != null)
-          .map((expense) => expense['id'] as int)
-          .toList();
-      if (expenseIds.isNotEmpty) {
-        await _supabase
-            .from('expenses')
-            .update({'closure_id': newClosureId})
-            .inFilter('id', expenseIds);
+      if (_openExpenses.isNotEmpty) {
+        final expenseIds = _openExpenses
+            .map((expense) => expense['id'])
+            .whereType<int>()
+            .toList();
+        if (expenseIds.isNotEmpty) {
+          await _supabase
+              .from('expenses')
+              .update({'closure_id': newClosureId})
+              .inFilter('id', expenseIds);
+        }
       }
 
       if (!mounted) return;
