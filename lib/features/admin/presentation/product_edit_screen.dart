@@ -409,6 +409,37 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     _loadCustomizations();
   }
 
+  /// Edita nombre y precio de una variante existente sin tocar su foto.
+  Future<void> _editVariantDialog(Map<String, dynamic> variant) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _VariantEditDialog(variant: variant),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      await _supabase.from('product_customizations').update({
+        'name': result['name'],
+        'price': result['price'],
+      }).eq('id', variant['id']);
+
+      await _loadCustomizations();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Variante actualizada ✓')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo actualizar la variante: $e')),
+        );
+      }
+    }
+  }
+
   /// Miniatura 44x44 de la foto de la variante (o ícono de cámara si no tiene).
   Widget _buildVariantThumbnail(Map<String, dynamic> variant) {
     final imageUrl = variant['image_url'] as String?;
@@ -703,14 +734,35 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: _buildVariantThumbnail(v),
-                    title: Text(v['name'] as String? ?? ''),
-                    subtitle: Text(
-                      'Q${(v['price'] as num).toStringAsFixed(2)}'
-                      '${hasImage ? ' · Con foto' : ' · Sin foto'}',
+                    title: GestureDetector(
+                      onTap: () => _editVariantDialog(v),
+                      child: Text(v['name'] as String? ?? ''),
+                    ),
+                    subtitle: GestureDetector(
+                      onTap: () => _editVariantDialog(v),
+                      child: Text(
+                        'Q${(v['price'] as num).toStringAsFixed(2)}'
+                        '${hasImage ? ' · Con foto' : ' · Sin foto'}',
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          icon: const Icon(
+                            Icons.edit,
+                            size: 20,
+                            color: Colors.blueGrey,
+                          ),
+                          tooltip: 'Editar nombre o precio',
+                          onPressed: () => _editVariantDialog(v),
+                        ),
                         IconButton(
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
@@ -858,6 +910,106 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Diálogo para editar el nombre y el precio de una variante existente.
+///
+/// Mantiene sus propios controladores temporales para poder liberarlos en
+/// [dispose] sin tocar la foto ni el resto de datos de la variante.
+class _VariantEditDialog extends StatefulWidget {
+  final Map<String, dynamic> variant;
+
+  const _VariantEditDialog({required this.variant});
+
+  @override
+  State<_VariantEditDialog> createState() => _VariantEditDialogState();
+}
+
+class _VariantEditDialogState extends State<_VariantEditDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _priceController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.variant['name']?.toString() ?? '',
+    );
+    _priceController = TextEditingController(
+      text: (widget.variant['price'] as num?)?.toStringAsFixed(2) ?? '0.00',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final newName = _nameController.text.trim();
+    final newPrice = double.tryParse(_priceController.text.trim());
+
+    if (newName.isEmpty) {
+      setState(() => _errorText = 'Ingresa un nombre válido.');
+      return;
+    }
+    if (newPrice == null || newPrice < 0) {
+      setState(() => _errorText = 'Ingresa un precio válido (Q 0.00 o mayor).');
+      return;
+    }
+
+    Navigator.pop(context, {'name': newName, 'price': newPrice});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar Variante'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Nombre',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _priceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Precio',
+              prefixText: 'Q ',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_errorText != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _errorText!,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          child: const Text('Guardar'),
+        ),
+      ],
     );
   }
 }
