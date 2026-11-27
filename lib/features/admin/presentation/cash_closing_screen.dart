@@ -100,6 +100,39 @@ String _csvCell(Object? value) {
   return text;
 }
 
+({String sin, String extras}) _parseItemNotesForCsv(String? notes) {
+  final text = notes?.trim() ?? '';
+  if (text.isEmpty) return (sin: '', extras: '');
+
+  final upper = text.toUpperCase();
+  const sinPrefix = 'SIN:';
+  const extraPrefix = 'CON EXTRA:';
+
+  final sinIndex = upper.indexOf(sinPrefix);
+  final extraIndex = upper.indexOf(extraPrefix);
+
+  if (sinIndex != -1 && extraIndex != -1) {
+    final sinValue = text
+        .substring(sinIndex + sinPrefix.length, extraIndex)
+        .trim()
+        .replaceAll(RegExp(r'^[|]\s*'), '');
+    final extraValue = text.substring(extraIndex + extraPrefix.length).trim();
+    return (sin: sinValue, extras: extraValue);
+  }
+
+  if (sinIndex != -1) {
+    final sinValue = text.substring(sinIndex + sinPrefix.length).trim();
+    return (sin: sinValue, extras: '');
+  }
+
+  if (extraIndex != -1) {
+    final extraValue = text.substring(extraIndex + extraPrefix.length).trim();
+    return (sin: '', extras: extraValue);
+  }
+
+  return (sin: '', extras: text);
+}
+
 String _buildCsv(
   List<Map<String, dynamic>> orders,
   _ReportStats stats, {
@@ -108,24 +141,67 @@ String _buildCsv(
 }) {
   final buffer = StringBuffer('\uFEFF');
   buffer.writeln(
-    'Orden,Fecha_Hora,Modalidad,Telefono,Metodo_Pago,Total_Q,Platillos',
+    'Orden,Fecha_Hora,Modalidad,Telefono,Metodo_Pago,Cantidad,Platillo,'
+    'Sin_Ingredientes,Extras_Notas,Precio_Unit_Q,Subtotal_Q,Total_Orden_Q',
   );
 
   for (final order in orders) {
-    final paidAt = _parseDate(order['paid_at']);
-    final total = (order['total'] as num?)?.toDouble() ?? 0;
+    final paidAt = _parseDate(order['paid_at'] ?? order['created_at']);
+    final orderTotal = (order['total'] as num?)?.toDouble() ?? 0;
+    final items = order['order_items'];
+    final itemList = items is List ? items : <dynamic>[];
 
-    buffer.writeln(
-      [
-        '#${order['id']}',
-        paidAt != null ? Formatters.dateTime(paidAt) : '',
-        _deliveryLabel(order['delivery_type']),
-        order['customer_phone']?.toString() ?? '',
-        _paymentLabel(order['payment_method']),
-        total.toStringAsFixed(2),
-        _orderDishes(order),
-      ].map(_csvCell).join(','),
-    );
+    if (itemList.isEmpty) {
+      buffer.writeln(
+        [
+          '#${order['id']}',
+          paidAt != null ? Formatters.dateTime(paidAt) : '',
+          _deliveryLabel(order['delivery_type']),
+          order['customer_phone']?.toString() ?? '',
+          _paymentLabel(order['payment_method']),
+          '',
+          'Sin platillos',
+          '',
+          '',
+          '',
+          '',
+          orderTotal.toStringAsFixed(2),
+        ].map(_csvCell).join(','),
+      );
+      continue;
+    }
+
+    for (var i = 0; i < itemList.length; i++) {
+      final raw = itemList[i];
+      final item = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+      final product = item['products'];
+      final productName = product is Map
+          ? (product['name']?.toString() ?? 'Producto')
+          : 'Producto';
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0;
+      final subtotal = quantity * unitPrice;
+      final parsedNotes = _parseItemNotesForCsv(item['notes']?.toString());
+
+      buffer.writeln(
+        [
+          '#${order['id']}',
+          i == 0 && paidAt != null ? Formatters.dateTime(paidAt) : '',
+          i == 0 ? _deliveryLabel(order['delivery_type']) : '',
+          i == 0 ? (order['customer_phone']?.toString() ?? '') : '',
+          i == 0 ? _paymentLabel(order['payment_method']) : '',
+          quantity,
+          productName,
+          parsedNotes.sin,
+          parsedNotes.extras,
+          unitPrice.toStringAsFixed(2),
+          subtotal.toStringAsFixed(2),
+          i == 0 ? orderTotal.toStringAsFixed(2) : '',
+        ].map(_csvCell).join(','),
+      );
+    }
   }
 
   buffer.writeln('');
@@ -136,8 +212,13 @@ String _buildCsv(
       '',
       '',
       '',
-      stats.cash.toStringAsFixed(2),
       '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      stats.cash.toStringAsFixed(2),
     ].map(_csvCell).join(','),
   );
   buffer.writeln(
@@ -147,41 +228,61 @@ String _buildCsv(
       '',
       '',
       '',
-      stats.transfer.toStringAsFixed(2),
       '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      stats.transfer.toStringAsFixed(2),
     ].map(_csvCell).join(','),
   );
   buffer.writeln(
     [
-      'TOTAL_GENERAL',
+      'TOTAL_INGRESOS_Q',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '',
       '',
       '',
       stats.revenue.toStringAsFixed(2),
-      '',
     ].map(_csvCell).join(','),
   );
   buffer.writeln(
     [
-      'GASTOS_DEL_TURNO',
+      'TOTAL_GASTOS_Q',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '',
       '',
       '',
       expenses.toStringAsFixed(2),
-      '',
     ].map(_csvCell).join(','),
   );
   buffer.writeln(
     [
-      'BALANCE_NETO',
+      'BALANCE_NETO_Q',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '',
       '',
       '',
       (stats.revenue - expenses).toStringAsFixed(2),
-      '',
     ].map(_csvCell).join(','),
   );
 
@@ -1455,25 +1556,71 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
 
       buffer.writeln(
         'Cierre_ID,Orden,Fecha_Hora,Modalidad,Telefono,Metodo_Pago,'
-        'Total_Q,Platillos',
+        'Cantidad,Platillo,Sin_Ingredientes,Extras_Notas,Precio_Unit_Q,'
+        'Subtotal_Q,Total_Orden_Q',
       );
 
       for (final order in orders) {
         final createdAt = _parseDate(order['created_at']);
-        final total = (order['total'] as num?)?.toDouble() ?? 0;
+        final orderTotal = (order['total'] as num?)?.toDouble() ?? 0;
+        final items = order['order_items'];
+        final itemList = items is List ? items : <dynamic>[];
 
-        buffer.writeln(
-          [
-            order['closure_id'],
-            '#${order['id']}',
-            createdAt != null ? Formatters.dateTime(createdAt) : '',
-            _deliveryLabel(order['delivery_type']),
-            order['customer_phone']?.toString() ?? '',
-            _paymentLabel(order['payment_method']),
-            total.toStringAsFixed(2),
-            _orderDishes(order),
-          ].map(_csvCell).join(','),
-        );
+        if (itemList.isEmpty) {
+          buffer.writeln(
+            [
+              order['closure_id'],
+              '#${order['id']}',
+              createdAt != null ? Formatters.dateTime(createdAt) : '',
+              _deliveryLabel(order['delivery_type']),
+              order['customer_phone']?.toString() ?? '',
+              _paymentLabel(order['payment_method']),
+              '',
+              'Sin platillos',
+              '',
+              '',
+              '',
+              '',
+              orderTotal.toStringAsFixed(2),
+            ].map(_csvCell).join(','),
+          );
+          continue;
+        }
+
+        for (var i = 0; i < itemList.length; i++) {
+          final raw = itemList[i];
+          final item = raw is Map
+              ? Map<String, dynamic>.from(raw)
+              : <String, dynamic>{};
+          final product = item['products'];
+          final productName = product is Map
+              ? (product['name']?.toString() ?? 'Producto')
+              : 'Producto';
+          final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+          final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0;
+          final subtotal = quantity * unitPrice;
+          final parsedNotes = _parseItemNotesForCsv(item['notes']?.toString());
+
+          buffer.writeln(
+            [
+              order['closure_id'],
+              '#${order['id']}',
+              i == 0 && createdAt != null
+                  ? Formatters.dateTime(createdAt)
+                  : '',
+              i == 0 ? _deliveryLabel(order['delivery_type']) : '',
+              i == 0 ? (order['customer_phone']?.toString() ?? '') : '',
+              i == 0 ? _paymentLabel(order['payment_method']) : '',
+              quantity,
+              productName,
+              parsedNotes.sin,
+              parsedNotes.extras,
+              unitPrice.toStringAsFixed(2),
+              subtotal.toStringAsFixed(2),
+              i == 0 ? orderTotal.toStringAsFixed(2) : '',
+            ].map(_csvCell).join(','),
+          );
+        }
       }
 
       final fileName =
