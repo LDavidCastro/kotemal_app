@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'analytics_screen.dart';
 import 'cash_closing_screen.dart';
 import 'expenses_screen.dart';
 import 'orders_dashboard_screen.dart';
@@ -19,6 +20,7 @@ class AdminHubScreen extends StatefulWidget {
   final bool canViewCashClosing;
   final bool canViewExpenses;
   final bool canViewUsers;
+  final bool canViewAnalytics;
   final bool canManageMenu;
 
   const AdminHubScreen({
@@ -29,6 +31,7 @@ class AdminHubScreen extends StatefulWidget {
     required this.canViewCashClosing,
     required this.canViewExpenses,
     required this.canViewUsers,
+    required this.canViewAnalytics,
     required this.canManageMenu,
   });
 
@@ -172,6 +175,18 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const UsersRolesScreen()),
+          ),
+        ),
+      if (widget.canViewAnalytics)
+        _HubOption(
+          title: 'Estadísticas y Análisis',
+          description:
+              'Top 10 clientes, platillos más y menos vendidos, horas pico y días fuertes.',
+          icon: Icons.insights,
+          color: Colors.deepPurple,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
           ),
         ),
       if (widget.canManageMenu)

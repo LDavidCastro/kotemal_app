@@ -26,10 +26,27 @@ dependencies:
   share_plus: ^13.3.1
   image_cropper: ^12.2.1
   flutter_local_notifications: ^17.2.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/logo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/images/logo.png"
+    background_color: "#F3ECE4"
+    theme_color: "#4B2618"
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#F3ECE4"
+  adaptive_icon_foreground: "assets/images/logo.png"

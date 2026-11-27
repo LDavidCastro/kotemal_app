@@ -483,6 +483,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final canViewCashClosing = isAdmin || modules.contains('cierre_caja');
     final canViewExpenses = isAdmin || modules.contains('gastos');
     final canViewUsers = isAdmin || modules.contains('usuarios');
+    final canViewAnalytics = isAdmin || modules.contains('estadisticas');
     final canManageMenu = isAdmin || modules.contains('menu');
 
     final showAdminHub = canViewKitchen ||
@@ -490,6 +491,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         canViewCashClosing ||
         canViewExpenses ||
         canViewUsers ||
+        canViewAnalytics ||
         canManageMenu;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 400;
@@ -537,6 +539,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                           canViewCashClosing: canViewCashClosing,
                           canViewExpenses: canViewExpenses,
                           canViewUsers: canViewUsers,
+                          canViewAnalytics: canViewAnalytics,
                           canManageMenu: canManageMenu,
                         ),
                       ),

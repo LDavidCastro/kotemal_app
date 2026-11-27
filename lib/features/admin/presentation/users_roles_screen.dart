@@ -25,6 +25,7 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
     'cierre_caja',
     'gastos',
     'usuarios',
+    'estadisticas',
     'menu',
   ];
 
@@ -34,6 +35,7 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
     'cierre_caja': 'Cierre de Caja',
     'gastos': 'Registro de Gastos',
     'usuarios': 'Usuarios y Permisos',
+    'estadisticas': 'Estadísticas y Análisis',
     'menu': 'Gestión de Menú',
   };
 
