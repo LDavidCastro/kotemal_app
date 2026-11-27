@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/location_service.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -89,10 +90,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text("K'OTEMAL - Orden #${widget.orderId}"),
-        backgroundColor: Colors.deepOrange,
+        title: Text(
+          "K'OTEMAL - Orden #${widget.orderId}",
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: AppColors.secondary,
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _supabase
@@ -124,26 +131,30 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   // Icono representativo
                   CircleAvatar(
                     radius: 50,
-                    backgroundColor: isReady ? Colors.green.shade100 : Colors.orange.shade100,
+                    backgroundColor: isReady ? Colors.green.shade100 : AppColors.surface,
                     child: Icon(
                       isReady
                           ? Icons.check_circle
                           : (deliveryType == 'local' ? Icons.table_restaurant : Icons.takeout_dining),
                       size: 60,
-                      color: isReady ? Colors.green : Colors.deepOrange,
+                      color: isReady ? Colors.green : AppColors.secondary,
                     ),
                   ),
                   const SizedBox(height: 20),
                   Text(
                     '¡Pedido Registrado con Éxito!',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     deliveryType == 'local'
                         ? 'Consumo en mesa: $tableNumber'
                         : 'Pedido para recoger en mostrador',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+                    style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -182,15 +193,19 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
                   // Mensaje orientador para el comensal
                   Card(
+                    color: AppColors.surface,
                     elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: AppColors.border),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Row(
                         children: [
                           Icon(
                             isReady ? Icons.notifications_active : Icons.hourglass_top,
-                            color: isReady ? Colors.green : Colors.deepOrange,
+                            color: isReady ? Colors.green : AppColors.secondary,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -218,7 +233,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     height: 48,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: AppColors.secondary,
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
@@ -254,7 +269,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                color: Colors.orange.shade50,
+                color: AppColors.background,
                 child: Column(
                   children: [
                     Row(
@@ -274,7 +289,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     const SizedBox(height: 12),
                     Text(
                       'ESTADO: ${status.toUpperCase()}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.secondary,
+                      ),
                     ),
                     if (status == 'en camino' && driverLocation != null)
                       const Padding(
@@ -320,7 +339,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               point: _restaurantLocation,
                               width: 45,
                               height: 45,
-                              child: const Icon(Icons.store, color: Colors.deepOrange, size: 38),
+                              child: const Icon(Icons.store, color: AppColors.secondary, size: 38),
                             ),
                             Marker(
                               point: clientLocation,
@@ -396,6 +415,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   width: double.infinity,
                   height: 45,
                   child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.secondary,
+                      side: const BorderSide(color: AppColors.secondary),
+                    ),
                     onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
                     child: const Text('Volver al Menú Principal'),
                   ),
@@ -426,7 +449,7 @@ class _StatusIcon extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 18,
-          backgroundColor: active ? Colors.deepOrange : Colors.grey.shade300,
+          backgroundColor: active ? AppColors.secondary : Colors.grey.shade300,
           foregroundColor: Colors.white,
           child: Icon(icon, size: 20),
         ),
@@ -453,7 +476,7 @@ class _StatusLine extends StatelessWidget {
     return Container(
       width: 25,
       height: 3,
-      color: active ? Colors.deepOrange : Colors.grey.shade300,
+      color: active ? AppColors.secondary : Colors.grey.shade300,
     );
   }
 }

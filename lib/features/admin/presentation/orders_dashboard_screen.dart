@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/order_alert_service.dart';
 import '../../../core/utils/formatters.dart';
@@ -312,9 +313,14 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text("K'OTEMAL - Panel de Cocina"),
-            backgroundColor: Colors.deepOrange,
+            title: const Text(
+              "K'OTEMAL - Panel de Cocina",
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: AppColors.secondary,
             foregroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
             actions: [
               ListenableBuilder(
                 listenable: OrderAlertService.instance,
@@ -342,6 +348,9 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
               controller: _tabController,
               isScrollable: true,
               tabAlignment: TabAlignment.start,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.white,
               tabs: [
                 Tab(
                   icon: const Icon(Icons.receipt_long),
@@ -498,7 +507,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
                             ? Icons.takeout_dining
                             : Icons.delivery_dining,
                     size: 18,
-                    color: Colors.deepOrange,
+                    color: AppColors.secondary,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -980,7 +989,7 @@ class _OrderDetailsSheetState extends State<_OrderDetailsSheet> {
                     decoration: BoxDecoration(
                       color: isPrepared
                           ? Colors.green.shade600
-                          : Colors.deepOrange,
+                          : AppColors.secondary,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -1304,7 +1313,7 @@ class _OrderDetailsSheetState extends State<_OrderDetailsSheet> {
                                 const Icon(
                                   Icons.person,
                                   size: 18,
-                                  color: Colors.deepOrange,
+                                  color: AppColors.secondary,
                                 ),
                                 const SizedBox(width: 6),
                                 Expanded(
@@ -1326,9 +1335,9 @@ class _OrderDetailsSheetState extends State<_OrderDetailsSheet> {
                                 _buildComandaBadge(
                                   icon: modeIcon,
                                   label: modeLabel,
-                                  background: Colors.deepOrange.shade50,
-                                  border: Colors.deepOrange.shade200,
-                                  foreground: Colors.deepOrange.shade900,
+                                  background: AppColors.surface,
+                                  border: AppColors.border,
+                                  foreground: AppColors.secondary,
                                 ),
                                 if (createdAt != null)
                                   _buildComandaBadge(

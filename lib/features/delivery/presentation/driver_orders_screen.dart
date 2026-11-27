@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/order_alert_service.dart';
 import '../../../core/utils/formatters.dart';
@@ -596,6 +597,8 @@ class _DriverOrdersScreenState extends State<DriverOrdersScreen> {
           ],
           bottom: const TabBar(
             indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
             tabs: [
               Tab(icon: Icon(Icons.delivery_dining), text: 'Por Entregar'),
               Tab(icon: Icon(Icons.today), text: 'Entregados Hoy'),
@@ -1552,7 +1555,7 @@ class _DriverRouteMapScreenState extends State<_DriverRouteMapScreen> {
   Widget _buildDeliveryMarker(Map<String, dynamic> order) {
     final orderId = order['id'];
     final isSelected = _selectedOrderId == orderId;
-    final color = isSelected ? Colors.deepOrange.shade900 : Colors.deepOrange;
+    final color = isSelected ? AppColors.primary : AppColors.secondary;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

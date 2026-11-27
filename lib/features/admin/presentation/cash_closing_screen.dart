@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 
 const _ordersWithItemsSelect =
@@ -604,7 +605,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: AppColors.secondary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -752,9 +753,14 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cierre de Caja'),
-        backgroundColor: Colors.deepOrange,
+        title: const Text(
+          'Cierre de Caja',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: AppColors.secondary,
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -829,10 +835,10 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
         ),
         const SizedBox(height: 12),
         Card(
-          color: Colors.deepOrange.shade50,
+          color: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.deepOrange.shade200),
+            side: const BorderSide(color: AppColors.border),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -842,11 +848,14 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Total de la caja', style: TextStyle(fontSize: 16)),
+                    Text(
+                      'Total de la caja',
+                      style: TextStyle(fontSize: 16, color: AppColors.primary),
+                    ),
                     SizedBox(height: 4),
                     Text(
                       'Órdenes abiertas',
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -858,7 +867,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Colors.deepOrange,
+                        color: AppColors.secondary,
                       ),
                     ),
                     Text(
@@ -885,7 +894,7 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
             width: double.infinity,
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
+                backgroundColor: AppColors.secondary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -1672,7 +1681,7 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: AppColors.secondary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -1709,9 +1718,14 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Historial de Cierres'),
-        backgroundColor: Colors.deepOrange,
+        title: const Text(
+          'Historial de Cierres',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: AppColors.secondary,
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -1783,10 +1797,10 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
 
   Widget _buildAccumulatedCard(_HistoryTotals totals) {
     return Card(
-      color: Colors.deepOrange.shade50,
+      color: AppColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.deepOrange.shade200),
+        side: const BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1795,11 +1809,15 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.summarize, color: Colors.deepOrange),
+                Icon(Icons.summarize, color: AppColors.secondary),
                 SizedBox(width: 8),
                 Text(
                   'Resumen acumulado',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 ),
               ],
             ),
@@ -1892,7 +1910,7 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.event, size: 18, color: Colors.deepOrange),
+                      const Icon(Icons.event, size: 18, color: AppColors.secondary),
                       const SizedBox(width: 6),
                       Text(
                         dateLabel,
@@ -1937,7 +1955,7 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
                   icon: const Icon(Icons.undo, size: 18),
                   label: const Text('Reabrir cierre'),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.deepOrange,
+                    foregroundColor: AppColors.secondary,
                   ),
                 ),
               ),
@@ -1948,7 +1966,7 @@ class _ClosureHistoryScreenState extends State<_ClosureHistoryScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.deepOrange,
+                    color: AppColors.secondary,
                   ),
                 ),
               ),
@@ -2111,7 +2129,7 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: AppColors.secondary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -2146,9 +2164,14 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detalle del cierre'),
-        backgroundColor: Colors.deepOrange,
+        title: const Text(
+          'Detalle del cierre',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: AppColors.secondary,
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -2251,8 +2274,8 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
         const SizedBox(height: 16),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.deepOrange,
-            side: BorderSide(color: Colors.deepOrange.shade300),
+            foregroundColor: AppColors.secondary,
+            side: const BorderSide(color: AppColors.secondary),
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
           onPressed: _reopening ? null : _reopen,
@@ -2279,10 +2302,10 @@ class _ClosureDetailViewState extends State<_ClosureDetailView> {
     final notes = widget.closure['notes']?.toString().trim() ?? '';
 
     return Card(
-      color: Colors.deepOrange.shade50,
+      color: AppColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.deepOrange.shade200),
+        side: const BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),

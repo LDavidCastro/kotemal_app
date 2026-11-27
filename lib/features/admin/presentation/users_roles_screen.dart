@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/constants/app_colors.dart';
+
 class UsersRolesScreen extends StatefulWidget {
   const UsersRolesScreen({super.key});
 
@@ -298,9 +300,14 @@ class _UsersRolesScreenState extends State<UsersRolesScreen> {
       length: _tabs.length,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Gestión de Usuarios y Roles'),
-          backgroundColor: Colors.deepOrange,
+          title: const Text(
+            'Gestión de Usuarios y Roles',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: AppColors.secondary,
           foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
           bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,

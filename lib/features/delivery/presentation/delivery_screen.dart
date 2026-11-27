@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/device_id_service.dart';
 import '../../../core/services/guest_orders_service.dart';
 import '../../../core/services/location_service.dart';
@@ -240,9 +241,13 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
-        title: const Text('Ubicación de Entrega'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        surfaceTintColor: Colors.transparent,
+        title: const Text(
+          'Ubicación de Entrega',
+          style: TextStyle(color: AppColors.primary),
+        ),
+        backgroundColor: AppColors.logoBackground,
+        foregroundColor: AppColors.primary,
       ),
       body: Column(
         children: [
@@ -328,7 +333,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
                                 : Icons.my_location,
                             color: _isLocationConfirmed
                                 ? Colors.white
-                                : Colors.deepOrange,
+                                : AppColors.secondary,
                           ),
                     label: Text(
                       _isLocationConfirmed ? 'GPS Actualizado' : 'Obtener Mi GPS',
@@ -439,7 +444,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
           const Icon(
             Icons.location_on,
             size: 48,
-            color: Colors.deepOrange,
+            color: AppColors.secondary,
           ),
           const SizedBox(height: 40),
         ],
@@ -451,7 +456,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
@@ -500,7 +505,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isLocationConfirmed
-                      ? Colors.deepOrange
+                      ? AppColors.secondary
                       : Colors.amber.shade100,
                   foregroundColor: _isLocationConfirmed
                       ? Colors.white
@@ -558,15 +563,16 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
+      labelStyle: const TextStyle(color: AppColors.primary),
       filled: true,
-      fillColor: const Color(0xFFF7F7F9),
-      prefixIcon: Icon(icon, color: Colors.deepOrange),
+      fillColor: AppColors.surface,
+      prefixIcon: Icon(icon, color: AppColors.secondary),
       focusedBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: Colors.deepOrange, width: 1.5),
+        borderSide: const BorderSide(color: AppColors.secondary, width: 1.5),
         borderRadius: BorderRadius.circular(12),
       ),
       enabledBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.grey.shade200),
+        borderSide: BorderSide(color: AppColors.border),
         borderRadius: BorderRadius.circular(12),
       ),
       border: OutlineInputBorder(
