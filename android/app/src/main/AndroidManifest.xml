@@ -41,7 +41,7 @@
     </queries>
 
     <application
-        android:label="kotemal_app"
+        android:label="K'OTEMAL"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
